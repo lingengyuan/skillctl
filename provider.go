@@ -54,6 +54,12 @@ type vercelLockEntry struct {
 
 func inspect(ctx context.Context, action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, stdout, progress io.Writer) ([]report, bool) {
 	locks, lockErrors := loadVercelLocks(manifests)
+	ghClaims := make(map[string]ghSkillClaimResult, len(skills))
+	for _, item := range skills {
+		if !item.Broken {
+			ghClaims[item.Path] = readGHSkillClaim(item)
+		}
+	}
 	session := newSourceSession(ctx, progress)
 	defer session.close()
 	var sourceRequests []sourceRequest
@@ -62,6 +68,7 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 			continue
 		}
 		claim, _, providerClaim := locks.claim(item)
+		ghClaim := ghClaims[item.Path]
 		managedClaim, _ := managedOwner(item, managed)
 		tracked, trackedClaim := state.findSkill(item)
 		claims := 0
@@ -74,6 +81,9 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 		if trackedClaim {
 			claims++
 		}
+		if ghClaim.Found {
+			claims++
+		}
 		if claims != 1 {
 			continue
 		}
@@ -82,6 +92,9 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 		}
 		if trackedClaim {
 			sourceRequests = append(sourceRequests, sourceRequest{Source: tracked.Source, Ref: tracked.Ref})
+		}
+		if ghClaim.Found && ghClaim.Err == nil && ghClaim.Claim.Repository != "" && !ghClaim.Claim.Pinned {
+			sourceRequests = append(sourceRequests, sourceRequest{Source: ghRepositoryURL(ghClaim.Claim.Repository), Ref: ghClaim.Claim.Ref})
 		}
 	}
 	session.prefetch(sourceRequests)
@@ -116,6 +129,7 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 			continue
 		}
 		claim, evidence, found := locks.claim(item)
+		ghClaim := ghClaims[item.Path]
 		managedOwner, managedEvidence := managedOwner(item, managed)
 		tracked, isTracked := state.findSkill(item)
 		claims := 0
@@ -128,11 +142,17 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 		if isTracked {
 			claims++
 		}
+		if ghClaim.Found {
+			claims++
+		}
 		if claims > 1 {
 			allEvidence := append([]string{}, managedEvidence...)
 			allEvidence = append(allEvidence, evidence...)
 			if isTracked {
 				allEvidence = append(allEvidence, tracked.Source)
+			}
+			if ghClaim.Found {
+				allEvidence = append(allEvidence, filepath.Join(item.Path, "SKILL.md"))
 			}
 			reports = append(reports, reportFor(item, "ambiguous", "unknown", allEvidence, "unknown", "ambiguous provenance", false, "report-only", "authoritative claims conflict"))
 			failed = true
@@ -140,6 +160,47 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 		}
 		if managedOwner != "" {
 			reports = append(reports, reportFor(item, "codex-host", "host", managedEvidence, "none", "managed by "+managedOwner, false, "report-only", ""))
+			continue
+		}
+		if ghClaim.Found {
+			evidence := []string{filepath.Join(item.Path, "SKILL.md")}
+			r := reportFor(item, "gh-skill", "provider", evidence, "unknown", "GitHub skill metadata invalid", false, "report-only", "")
+			r.Revision = ghClaim.Claim.TreeSHA
+			if ghClaim.Err != nil {
+				r.Error = oneLine(ghClaim.Err.Error())
+				r.Status += ": " + r.Error
+				failed = true
+			} else if ghClaim.Claim.LocalPath != "" {
+				r.Status = "managed from local path"
+			} else if ghClaim.Claim.Pinned {
+				r.Status = "pinned"
+				r.Executor = "gh-skill-cli"
+			} else {
+				r.Executor = "gh-skill-cli"
+				available, err := checkGHSkill(session, ghClaim.Claim)
+				r.UpdateAvailable = available
+				if err != nil {
+					r.Status = "GitHub skill check failed: " + oneLine(err.Error())
+					r.Error = oneLine(err.Error())
+					failed = true
+				} else if action == "update" && available {
+					updated, err := updateGHSkillProvider(ctx, session, item, ghClaim.Claim, progress)
+					if err != nil {
+						r.Status = "GitHub skill update failed: " + oneLine(err.Error())
+						r.Error = oneLine(err.Error())
+						failed = true
+					} else {
+						r.Revision = updated.TreeSHA
+						r.UpdateAvailable = false
+						r.Status = "updated"
+					}
+				} else if available {
+					r.Status = "update available"
+				} else {
+					r.Status = "up to date"
+				}
+			}
+			reports = append(reports, r)
 			continue
 		}
 		if found {

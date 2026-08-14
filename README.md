@@ -45,7 +45,7 @@ skillctl track \
   example-skill
 ```
 
-Git worktree、`skillctl track` 和 Vercel Skills v3 lock 支持安全更新。Vercel 更新需要 Node.js / `npx` 或全局 `skills` 命令。Codex system skills 只检查、不更新。无法确认来源的目录显示为 `local/untracked`。
+Git worktree、`skillctl track`、Vercel Skills v3 lock 和 `gh skill` metadata 支持安全更新。Vercel 更新需要 Node.js / `npx` 或全局 `skills` 命令；`gh skill` 更新需要 GitHub CLI。Codex system skills 只检查、不更新。无法确认来源的目录显示为 `local/untracked`。
 
 ## 配置
 

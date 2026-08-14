@@ -302,6 +302,109 @@ func TestVercelProviderUpdateVerifiesLockAndInstalledContent(t *testing.T) {
 	}
 }
 
+func TestGHSkillMetadataCheckAndUpdate(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", filepath.Join(dir, "home"))
+	t.Setenv("USERPROFILE", filepath.Join(dir, "home"))
+	t.Setenv("APPDATA", filepath.Join(dir, "app-data"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "local-app-data"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+
+	remote := filepath.Join(dir, "remote.git")
+	seed := filepath.Join(dir, "seed")
+	gitTest(t, dir, "init", "--bare", remote)
+	gitTest(t, dir, "clone", remote, seed)
+	gitTest(t, seed, "config", "user.email", "test@example.invalid")
+	gitTest(t, seed, "config", "user.name", "test")
+	branch := gitTest(t, seed, "branch", "--show-current")
+	sourceSkill := filepath.Join(seed, "skills", "demo")
+	if err := os.MkdirAll(sourceSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceSkill, "SKILL.md"), []byte("---\nname: demo\ndescription: gh adapter fixture\n---\nold\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, seed, "add", ".")
+	gitTest(t, seed, "commit", "-m", "old")
+	gitTest(t, seed, "push", "-u", "origin", "HEAD")
+	oldTree := gitTest(t, seed, "rev-parse", "HEAD:skills/demo")
+
+	root := filepath.Join(dir, "installed")
+	installed := filepath.Join(root, "demo")
+	if err := os.MkdirAll(installed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGHSkillTestFile(t, filepath.Join(installed, "SKILL.md"), branch, oldTree, "old")
+
+	if err := os.WriteFile(filepath.Join(sourceSkill, "SKILL.md"), []byte("---\nname: demo\ndescription: gh adapter fixture\n---\nnew\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, seed, "add", ".")
+	gitTest(t, seed, "commit", "-m", "new")
+	gitTest(t, seed, "push")
+	newTree := gitTest(t, seed, "rev-parse", "HEAD:skills/demo")
+
+	originalURL := ghRepositoryURL
+	originalUpdater := runGHSkillUpdater
+	defer func() {
+		ghRepositoryURL = originalURL
+		runGHSkillUpdater = originalUpdater
+	}()
+	ghRepositoryURL = func(string) string { return remote }
+	requested := ""
+	runGHSkillUpdater = func(_ context.Context, request ghSkillUpdateRequest, _ io.Writer) (string, error) {
+		requested = request.Name
+		writeGHSkillTestFile(t, filepath.Join(installed, "SKILL.md"), branch, newTree, "new")
+		return "updated demo", nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", "--timeout", "30s", "--path", root, "demo"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "update available") || !strings.Contains(stdout.String(), "gh-skill") {
+		t.Fatalf("gh check failed (%d): stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"update", "--timeout", "30s", "--path", root, "demo"}, &stdout, &stderr); code != 0 || requested != "demo" || !strings.Contains(stdout.String(), "updated") {
+		t.Fatalf("gh update failed (%d, request=%q): stdout=%q stderr=%q", code, requested, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"check", "--timeout", "30s", "--path", root, "demo"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "up to date") {
+		t.Fatalf("gh post-check failed (%d): stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func writeGHSkillTestFile(t *testing.T, path, ref, tree, body string) {
+	t.Helper()
+	content := fmt.Sprintf("---\nname: demo\ndescription: gh adapter fixture\nmetadata:\n  github-repo: example/demo\n  github-ref: %s\n  github-tree-sha: %s\n  github-path: skills/demo\n---\n%s\n", ref, tree, body)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGHLocalPathMetadataIsNotReportedAsUntracked(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", filepath.Join(dir, "app-data"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "local-app-data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+	skillDir := filepath.Join(dir, "skills", "local-demo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: local-demo\ndescription: local gh fixture\nmetadata:\n  local-path: ../source/local-demo\n---\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", "--path", filepath.Dir(skillDir), "local-demo"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("check failed (%d): stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "gh-skill") || !strings.Contains(stdout.String(), "managed from local path") || strings.Contains(stdout.String(), "track --source") {
+		t.Fatalf("local-path metadata was not classified: %q", stdout.String())
+	}
+}
+
 func writeJSONTestFile(t *testing.T, path string, value any) {
 	t.Helper()
 	content, err := json.Marshal(value)
