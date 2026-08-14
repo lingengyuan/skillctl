@@ -17,7 +17,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-var version = "0.1.0"
+var version = "0.2.0"
 
 var defaultConfig = `# Directories are scanned recursively for SKILL.md files.
 # Relative paths are resolved from this file.
