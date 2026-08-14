@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -22,8 +23,31 @@ func TestScannerFollowsWindowsJunctionWithoutAdministrator(t *testing.T) {
 		t.Skipf("directory junction is unavailable: %v: %s", err, output)
 	}
 
-	result := runSkillctl(t, home, "check", "--path", root)
-	if result.exitCode != 0 || !strings.Contains(result.output, "junction-skill: unmanaged (source unknown)") {
+	result := runSkillctl(t, home, "check", "--json", "--path", target, "--path", root)
+	if result.exitCode != 0 {
 		t.Fatalf("unexpected junction skill result (%d):\n%s", result.exitCode, result.output)
 	}
+	var reports []struct {
+		Path    string   `json:"path"`
+		Aliases []string `json:"aliases"`
+	}
+	if err := json.Unmarshal([]byte(result.output), &reports); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, result.output)
+	}
+	if len(reports) != 1 {
+		t.Fatalf("instances=%d: %s", len(reports), result.output)
+	}
+	found := false
+	for _, alias := range reports[0].Aliases {
+		if samePathForTest(alias, link) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("junction alias missing: %#v", reports[0])
+	}
+}
+
+func samePathForTest(a, b string) bool {
+	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }

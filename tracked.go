@@ -87,6 +87,18 @@ func (s *trackedState) find(path string) (*trackedEntry, bool) {
 	return nil, false
 }
 
+func (s *trackedState) findSkill(item skill) (*trackedEntry, bool) {
+	if entry, ok := s.find(item.Path); ok {
+		return entry, true
+	}
+	for _, alias := range item.Aliases {
+		if entry, ok := s.find(alias); ok {
+			return entry, true
+		}
+	}
+	return nil, false
+}
+
 func (s *trackedState) put(entry trackedEntry) {
 	if existing, ok := s.find(entry.Path); ok {
 		*existing = entry
@@ -186,57 +198,63 @@ func normalizeSource(source string) string {
 	return source
 }
 
-func processTracked(action string, items []skill, state *trackedState, stdout, stderr io.Writer) bool {
+func processTracked(action string, items []skill, state *trackedState, session *sourceSession, stdout, stderr io.Writer) bool {
 	failed := false
 	for _, item := range items {
-		entry, ok := state.find(item.Path)
+		entry, ok := state.findSkill(item)
 		if !ok {
-			fmt.Fprintf(stdout, "%s: unmanaged (source unknown)\n", item.Name)
+			printSkills(stdout, []skill{item}, "local/untracked (no update source)")
 			continue
 		}
-		_, remoteSkill, err := prepareSource(entry.Source, entry.Ref, entry.SkillPath)
+		cache, err := session.source(entry.Source, entry.Ref)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s: failed (%s)\n", item.Name, oneLine(err.Error()))
+			reportFailure(stderr, item, oneLine(err.Error()))
+			failed = true
+			continue
+		}
+		remoteSkill, err := sourceSkillPath(cache, entry.SkillPath)
+		if err != nil {
+			reportFailure(stderr, item, oneLine(err.Error()))
 			failed = true
 			continue
 		}
 		remoteName, valid := readSkill(filepath.Join(remoteSkill, "SKILL.md"), filepath.Base(remoteSkill))
 		if !valid || remoteName != item.Name {
-			fmt.Fprintf(stderr, "%s: failed (source path does not contain skill %q)\n", item.Name, item.Name)
+			reportFailure(stderr, item, fmt.Sprintf("source path does not contain skill %q", item.Name))
 			failed = true
 			continue
 		}
 		localHash, err := hashDirectory(item.Path)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s: failed (hash local skill: %s)\n", item.Name, oneLine(err.Error()))
+			reportFailure(stderr, item, "hash local skill: "+oneLine(err.Error()))
 			failed = true
 			continue
 		}
 		remoteHash, err := hashDirectory(remoteSkill)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s: failed (hash remote skill: %s)\n", item.Name, oneLine(err.Error()))
+			reportFailure(stderr, item, "hash remote skill: "+oneLine(err.Error()))
 			failed = true
 			continue
 		}
 		if localHash != entry.InstalledHash {
 			if remoteHash != entry.InstalledHash {
-				fmt.Fprintf(stdout, "%s: update available, skipped (local files were modified)\n", item.Name)
+				printSkills(stdout, []skill{item}, "update available, skipped (local files were modified)")
 			} else {
-				fmt.Fprintf(stdout, "%s: skipped (local files were modified)\n", item.Name)
+				printSkills(stdout, []skill{item}, "skipped (local files were modified)")
 			}
 			continue
 		}
 		if remoteHash == entry.InstalledHash {
-			fmt.Fprintf(stdout, "%s: up to date\n", item.Name)
+			printSkills(stdout, []skill{item}, "up to date")
 			continue
 		}
 		if action == "check" {
-			fmt.Fprintf(stdout, "%s: update available\n", item.Name)
+			printSkills(stdout, []skill{item}, "update available")
 			continue
 		}
 		replacement, err := beginDirectoryReplacement(item.Path, remoteSkill)
 		if err != nil {
-			fmt.Fprintf(stderr, "%s: failed (replace skill: %s)\n", item.Name, oneLine(err.Error()))
+			reportFailure(stderr, item, "replace skill: "+oneLine(err.Error()))
 			failed = true
 			continue
 		}
@@ -245,19 +263,19 @@ func processTracked(action string, items []skill, state *trackedState, stdout, s
 		if err := state.save(); err != nil {
 			entry.InstalledHash = previousHash
 			if rollbackErr := replacement.rollback(); rollbackErr != nil {
-				fmt.Fprintf(stderr, "%s: failed (save source state: %s; rollback skill: %s)\n", item.Name, oneLine(err.Error()), oneLine(rollbackErr.Error()))
+				reportFailure(stderr, item, "save source state: "+oneLine(err.Error())+"; rollback skill: "+oneLine(rollbackErr.Error()))
 			} else {
-				fmt.Fprintf(stderr, "%s: failed (save source state: %s)\n", item.Name, oneLine(err.Error()))
+				reportFailure(stderr, item, "save source state: "+oneLine(err.Error()))
 			}
 			failed = true
 			continue
 		}
 		if err := replacement.commit(); err != nil {
-			fmt.Fprintf(stderr, "%s: failed (remove skill backup: %s)\n", item.Name, oneLine(err.Error()))
+			reportFailure(stderr, item, "remove skill backup: "+oneLine(err.Error()))
 			failed = true
 			continue
 		}
-		fmt.Fprintf(stdout, "%s: updated\n", item.Name)
+		printSkills(stdout, []skill{item}, "updated")
 	}
 	return failed
 }
@@ -279,7 +297,7 @@ func syncSource(source, ref string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find user cache directory: %w", err)
 	}
-	id := sha256.Sum256([]byte(source))
+	id := sha256.Sum256([]byte(normalizeSource(source) + "\x00" + ref))
 	cache := filepath.Join(cacheBase, "skillctl", "sources", hex.EncodeToString(id[:16]))
 	if _, err := os.Stat(filepath.Join(cache, ".git")); os.IsNotExist(err) {
 		if err := os.MkdirAll(filepath.Dir(cache), 0o755); err != nil {
