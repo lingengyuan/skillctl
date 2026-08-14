@@ -461,6 +461,29 @@ func (s *vercelUpdateSnapshot) fail(installed, manifestPath string, cause error)
 }
 
 func (s *vercelUpdateSnapshot) restore(installed, manifestPath string) error {
+	if _, err := os.Lstat(installed); os.IsNotExist(err) {
+		stage, err := os.MkdirTemp(filepath.Dir(installed), ".skillctl-restore-")
+		if err != nil {
+			return fmt.Errorf("restore skill: %w", err)
+		}
+		defer os.RemoveAll(stage)
+		if err := copyDirectory(s.directory, stage); err != nil {
+			return fmt.Errorf("restore skill: %w", err)
+		}
+		if err := os.Rename(stage, installed); err != nil {
+			return fmt.Errorf("restore skill: %w", err)
+		}
+		if err := writeFileAtomically(manifestPath, s.lock, s.lockMode); err != nil {
+			if removeErr := os.RemoveAll(installed); removeErr != nil {
+				return fmt.Errorf("restore lock: %w; restore provider result: %v", err, removeErr)
+			}
+			return fmt.Errorf("restore lock: %w", err)
+		}
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("restore skill: %w", err)
+	}
+
 	replacement, err := beginDirectoryReplacement(installed, s.directory)
 	if err != nil {
 		return fmt.Errorf("restore skill: %w", err)

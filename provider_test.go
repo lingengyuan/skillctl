@@ -279,6 +279,7 @@ func TestVercelProviderUpdateVerifiesLockAndInstalledContent(t *testing.T) {
 	gitTest(t, seed, "add", ".")
 	gitTest(t, seed, "commit", "-m", "provider partial write")
 	gitTest(t, seed, "push")
+	partialTree := gitTest(t, seed, "rev-parse", "HEAD:skills/demo")
 	runVercelUpdater = func(_ context.Context, _ vercelUpdateRequest, _ io.Writer) (string, error) {
 		replacement, err := beginDirectoryReplacement(installed, sourceSkill)
 		if err != nil {
@@ -299,6 +300,32 @@ func TestVercelProviderUpdateVerifiesLockAndInstalledContent(t *testing.T) {
 	afterLock, err := os.ReadFile(lockPath)
 	if err != nil || !bytes.Equal(afterLock, beforeLock) {
 		t.Fatalf("provider lock was not rolled back: %v before=%q after=%q", err, beforeLock, afterLock)
+	}
+
+	runVercelUpdater = func(_ context.Context, _ vercelUpdateRequest, _ io.Writer) (string, error) {
+		if err := os.RemoveAll(installed); err != nil {
+			return "", err
+		}
+		lock.Skills["demo"] = vercelLockEntry{
+			Source: "example/demo", SourceType: "github", SourceURL: remote,
+			SkillPath: "skills/demo/SKILL.md", SkillFolderHash: partialTree,
+		}
+		writeJSONTestFile(t, lockPath, lock)
+		return "provider removed the installed directory", nil
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"update", "--timeout", "30s", "--config", configPath, "demo"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("removed provider directory exit code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	afterSkill, err = os.ReadFile(filepath.Join(installed, "SKILL.md"))
+	if err != nil || !bytes.Equal(afterSkill, beforeSkill) {
+		t.Fatalf("removed skill directory was not rolled back: %v before=%q after=%q", err, beforeSkill, afterSkill)
+	}
+	afterLock, err = os.ReadFile(lockPath)
+	if err != nil || !bytes.Equal(afterLock, beforeLock) {
+		t.Fatalf("removed provider lock was not rolled back: %v before=%q after=%q", err, beforeLock, afterLock)
 	}
 }
 
