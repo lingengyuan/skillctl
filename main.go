@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -181,7 +182,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
+	progress := io.Writer(io.Discard)
+	if args[0] != "track" && !opt.JSON {
+		progress = stderr
+	}
+	started := time.Now()
+	scanStarted := time.Now()
+	fmt.Fprintln(progress, "Scanning skills...")
 	skills, scanFailed := scan(roots, ignoreMissing, stderr)
+	fmt.Fprintf(progress, "Found %d skill instances (%s).\n", len(skills), time.Since(scanStarted).Round(time.Millisecond))
 	if len(opt.Names) > 0 {
 		var err error
 		skills, err = selectSkills(skills, opt.Names)
@@ -222,7 +231,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if opt.JSON {
 		resultWriter = io.Discard
 	}
-	reports, gitFailed := inspect(args[0], skills, state, manifests, managed, resultWriter, stderr)
+	fmt.Fprintf(progress, "Checking %d skill instances...\n", len(skills))
+	reports, gitFailed := inspect(args[0], skills, state, manifests, managed, resultWriter, progress)
 	if opt.JSON {
 		if err := json.NewEncoder(stdout).Encode(reports); err != nil {
 			fmt.Fprintln(stderr, err)
@@ -230,8 +240,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if scanFailed || gitFailed {
+		fmt.Fprintf(progress, "Finished with errors (%s).\n", time.Since(started).Round(time.Millisecond))
 		return 1
 	}
+	fmt.Fprintf(progress, "Finished (%s).\n", time.Since(started).Round(time.Millisecond))
 	return 0
 }
 
@@ -594,6 +606,7 @@ func processGit(action string, skills []skill, state *trackedState, session *sou
 		return true
 	}
 	repos := map[string]*repository{}
+	rootCache := map[string]gitRootResult{}
 	var copied []skill
 	failed := false
 	for _, item := range skills {
@@ -601,12 +614,11 @@ func processGit(action string, skills []skill, state *trackedState, session *sou
 			copied = append(copied, item)
 			continue
 		}
-		root, err := gitOutput(item.Path, "rev-parse", "--show-toplevel")
-		if err != nil {
+		root, found := findGitRoot(item.Path, rootCache)
+		if !found {
 			copied = append(copied, item)
 			continue
 		}
-		root = filepath.Clean(root)
 		relSkill, err := filepath.Rel(root, filepath.Join(item.Path, "SKILL.md"))
 		if err != nil || !within(root, filepath.Join(item.Path, "SKILL.md")) || gitTracks(root, relSkill) == false {
 			copied = append(copied, item)
@@ -639,6 +651,37 @@ func processGit(action string, skills []skill, state *trackedState, session *sou
 		failed = true
 	}
 	return failed
+}
+
+type gitRootResult struct {
+	root  string
+	found bool
+}
+
+func findGitRoot(path string, cache map[string]gitRootResult) (string, bool) {
+	dir := filepath.Clean(path)
+	var visited []string
+	result := gitRootResult{}
+	for {
+		if cached, ok := cache[dir]; ok {
+			result = cached
+			break
+		}
+		visited = append(visited, dir)
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			result = gitRootResult{root: dir, found: true}
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	for _, visitedDir := range visited {
+		cache[visitedDir] = result
+	}
+	return result.root, result.found
 }
 
 func gitTracks(root, path string) bool {

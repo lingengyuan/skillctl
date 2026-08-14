@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestVercelV3ClaimBindsConfiguredInstallRoot(t *testing.T) {
@@ -150,8 +153,7 @@ func TestVercelGitLockCheckLatestUpdateAndDrift(t *testing.T) {
 	install := filepath.Join(dir, "installed", "demo")
 	copyTestDirectory(t, sourceSkill, install)
 	entry := vercelLockEntry{SourceType: "github", SourceURL: remote, SkillPath: "skills/demo/SKILL.md", SkillFolderHash: expected}
-	session := sourceSession{caches: map[string]string{}}
-	available, drift, err := checkVercelEntry(&session, entry, install)
+	available, drift, err := checkVercelEntryTest(entry, install)
 	if err != nil || available || drift != "clean" {
 		t.Fatalf("latest check = available=%v drift=%q err=%v", available, drift, err)
 	}
@@ -161,14 +163,14 @@ func TestVercelGitLockCheckLatestUpdateAndDrift(t *testing.T) {
 	gitTest(t, seed, "add", ".")
 	gitTest(t, seed, "commit", "-m", "update")
 	gitTest(t, seed, "push")
-	available, drift, err = checkVercelEntry(&sourceSession{caches: map[string]string{}}, entry, install)
+	available, drift, err = checkVercelEntryTest(entry, install)
 	if err != nil || !available || drift != "clean" {
 		t.Fatalf("update check = available=%v drift=%q err=%v", available, drift, err)
 	}
 	if err := os.WriteFile(filepath.Join(install, "local.txt"), []byte("local"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, drift, err = checkVercelEntry(&sourceSession{caches: map[string]string{}}, entry, install)
+	_, drift, err = checkVercelEntryTest(entry, install)
 	if err != nil || drift != "modified" {
 		t.Fatalf("drift check = %q, %v", drift, err)
 	}
@@ -182,6 +184,12 @@ func gitTest(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %v: %v\n%s", args, err, output)
 	}
 	return string(bytes.TrimSpace(output))
+}
+
+func checkVercelEntryTest(entry vercelLockEntry, installed string) (bool, string, error) {
+	session := newSourceSession(io.Discard)
+	defer session.close()
+	return checkVercelEntry(session, entry, installed)
 }
 
 func copyTestDirectory(t *testing.T, source, target string) {
@@ -276,6 +284,124 @@ func TestSourceSessionFetchesEachNormalizedSourceRefOnce(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("sync count = %d, want one per normalized (source, ref)", count)
 	}
+}
+
+func TestSourceSessionPrefetchesIndependentSourcesConcurrently(t *testing.T) {
+	original := syncSourceForSession
+	defer func() { syncSourceForSession = original }()
+	started := make(chan string, 3)
+	release := make(chan struct{})
+	syncSourceForSession = func(source, ref string) (string, error) {
+		started <- source
+		<-release
+		return source, nil
+	}
+	session := newSourceSession(io.Discard)
+	done := make(chan struct{})
+	go func() {
+		session.prefetch([]sourceRequest{{Source: "one"}, {Source: "two"}, {Source: "three"}})
+		close(done)
+	}()
+	for i := 0; i < 3; i++ {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			close(release)
+			<-done
+			t.Fatal("independent source checks did not start concurrently")
+		}
+	}
+	close(release)
+	<-done
+}
+
+func TestCheckReportsProgressBeforeRemoteWait(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", filepath.Join(dir, "app-data"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "local-app-data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+
+	root := filepath.Join(dir, "skills")
+	installed := filepath.Join(root, "slow-skill")
+	if err := os.MkdirAll(installed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(installed, "SKILL.md"), []byte("---\nname: slow-skill\ndescription: progress fixture\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lockPath := filepath.Join(dir, "lock.json")
+	lock := `{"version":3,"skills":{"slow-skill":{"sourceType":"github","sourceUrl":"https://example.invalid/slow.git","skillPath":"skills/slow-skill/SKILL.md","skillFolderHash":"0000000000000000000000000000000000000000"}}}`
+	if err := os.WriteFile(lockPath, []byte(lock), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(dir, "config.toml")
+	config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"test\"\nscope = \"user\"\n[[manifests]]\nkind = \"vercel-skills-lock-v3\"\npath = %q\ninstall_root = %q\n", filepath.ToSlash(root), filepath.ToSlash(lockPath), filepath.ToSlash(root))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	original := syncSourceForSession
+	defer func() { syncSourceForSession = original }()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	syncSourceForSession = func(source, ref string) (string, error) {
+		close(entered)
+		<-release
+		return "", fmt.Errorf("fixture stopped")
+	}
+
+	var stdout bytes.Buffer
+	progress := newSignalWriter()
+	done := make(chan int, 1)
+	go func() {
+		done <- run([]string{"check", "--config", configPath, "slow-skill"}, &stdout, progress)
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		close(release)
+		<-done
+		t.Fatal("remote check did not start within one second")
+	}
+	select {
+	case <-progress.wrote:
+	case <-time.After(time.Second):
+		close(release)
+		<-done
+		t.Fatal("no progress was written while the remote check was waiting")
+	}
+	close(release)
+	if code := <-done; code != 1 {
+		t.Fatalf("exit code = %d, want provider failure", code)
+	}
+	if !strings.Contains(progress.String(), "Checking") {
+		t.Fatalf("progress output = %q", progress.String())
+	}
+}
+
+type signalWriter struct {
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	once  sync.Once
+	wrote chan struct{}
+}
+
+func newSignalWriter() *signalWriter {
+	return &signalWriter{wrote: make(chan struct{})}
+}
+
+func (w *signalWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	n, err := w.buf.Write(p)
+	w.mu.Unlock()
+	w.once.Do(func() { close(w.wrote) })
+	return n, err
+}
+
+func (w *signalWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.String()
 }
 
 func TestReportSinkAssociatesSameNameByCanonicalPath(t *testing.T) {
@@ -574,7 +700,7 @@ func TestVercelGitDirectoryHashLatestUpdateAndDrift(t *testing.T) {
 	installed := filepath.Join(dir, "installed")
 	copyTestDirectory(t, source, installed)
 	entry := vercelLockEntry{SourceType: "git", SourceURL: remote, SkillPath: "skills/demo/SKILL.md", SkillFolderHash: h}
-	available, drift, err := checkVercelEntry(&sourceSession{caches: map[string]string{}}, entry, installed)
+	available, drift, err := checkVercelEntryTest(entry, installed)
 	if err != nil || available || drift != "clean" {
 		t.Fatalf("latest %v %s %v", available, drift, err)
 	}
@@ -584,14 +710,14 @@ func TestVercelGitDirectoryHashLatestUpdateAndDrift(t *testing.T) {
 	gitTest(t, seed, "add", ".")
 	gitTest(t, seed, "commit", "-m", "b")
 	gitTest(t, seed, "push")
-	available, drift, err = checkVercelEntry(&sourceSession{caches: map[string]string{}}, entry, installed)
+	available, drift, err = checkVercelEntryTest(entry, installed)
 	if err != nil || !available || drift != "clean" {
 		t.Fatalf("update %v %s %v", available, drift, err)
 	}
 	if err := os.WriteFile(filepath.Join(installed, "local"), []byte("l"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, drift, err = checkVercelEntry(&sourceSession{caches: map[string]string{}}, entry, installed)
+	_, drift, err = checkVercelEntryTest(entry, installed)
 	if err != nil || drift != "modified" {
 		t.Fatalf("drift %s %v", drift, err)
 	}
@@ -650,6 +776,53 @@ func TestJSONEncodingHasNoTextNoise(t *testing.T) {
 	var got []report
 	if err := json.Unmarshal(data, &got); err != nil || len(got) != 1 {
 		t.Fatalf("%s %v", data, err)
+	}
+}
+
+func TestJSONCheckSuppressesProgress(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", filepath.Join(dir, "app-data"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "local-app-data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+	skillDir := filepath.Join(dir, "skills", "json-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: json-skill\ndescription: JSON fixture\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", "--json", "--path", filepath.Dir(skillDir)}, &stdout, &stderr); code != 0 {
+		t.Fatalf("check failed (%d): %s", code, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("JSON progress leaked to stderr: %q", stderr.String())
+	}
+	var reports []report
+	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil || len(reports) != 1 {
+		t.Fatalf("invalid JSON output: %v, %q", err, stdout.String())
+	}
+}
+
+func TestUntrackedCheckShowsTrackRepairCommand(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", filepath.Join(dir, "app-data"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "local-app-data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+	skillDir := filepath.Join(dir, "skills", "repair-skill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: repair-skill\ndescription: Repair fixture\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", "--path", filepath.Dir(skillDir), "repair-skill"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("check failed (%d): %s", code, stderr.String())
+	}
+	want := "skillctl track --source SOURCE_URL repair-skill"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("track repair command missing from output:\n%s", stdout.String())
 	}
 }
 

@@ -428,7 +428,10 @@ func testEnv(home string) []string {
 	env := os.Environ()
 	env = append(env, "HOME="+home, "USERPROFILE="+home)
 	if runtime.GOOS == "windows" {
-		env = append(env, "APPDATA="+filepath.Join(home, "AppData", "Roaming"))
+		env = append(env,
+			"APPDATA="+filepath.Join(home, "AppData", "Roaming"),
+			"LOCALAPPDATA="+filepath.Join(home, "AppData", "Local"),
+		)
 	} else if runtime.GOOS == "darwin" {
 		env = append(env, "XDG_CONFIG_HOME=")
 	} else {
