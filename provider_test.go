@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -187,7 +188,7 @@ func gitTest(t *testing.T, dir string, args ...string) string {
 }
 
 func checkVercelEntryTest(entry vercelLockEntry, installed string) (bool, string, error) {
-	session := newSourceSession(io.Discard)
+	session := newSourceSession(context.Background(), io.Discard)
 	defer session.close()
 	return checkVercelEntry(session, entry, installed)
 }
@@ -255,12 +256,12 @@ func TestProviderClaimWinsAndExplicitConflictFailsClosed(t *testing.T) {
 	}
 	item := skill{Name: "demo", Path: install, ScanRoot: filepath.Join(dir, "skills")}
 	manifests := []manifest{{Kind: "vercel-skills-lock-v3", Path: lockPath, InstallRoot: filepath.Join(dir, "skills")}}
-	reports, failed := inspect("check", []skill{item}, &trackedState{Version: 1}, manifests, nil, io.Discard, io.Discard)
+	reports, failed := inspect(context.Background(), "check", []skill{item}, &trackedState{Version: 1}, manifests, nil, io.Discard, io.Discard)
 	if failed || len(reports) != 1 || reports[0].Provider != "vercel-skills-lock-v3" {
 		t.Fatalf("provider did not win: %#v", reports)
 	}
 	state := &trackedState{Version: 1, Skills: []trackedEntry{{Path: install, Source: "elsewhere", SkillPath: "demo", InstalledHash: "x"}}}
-	reports, _ = inspect("check", []skill{item}, state, manifests, nil, io.Discard, io.Discard)
+	reports, _ = inspect(context.Background(), "check", []skill{item}, state, manifests, nil, io.Discard, io.Discard)
 	if reports[0].Status != "ambiguous provenance" || reports[0].Error == "" {
 		t.Fatalf("conflict did not fail closed: %#v", reports[0])
 	}
@@ -270,8 +271,8 @@ func TestSourceSessionFetchesEachNormalizedSourceRefOnce(t *testing.T) {
 	original := syncSourceForSession
 	defer func() { syncSourceForSession = original }()
 	count := 0
-	syncSourceForSession = func(source, ref string) (string, error) { count++; return source + "-" + ref, nil }
-	session := sourceSession{caches: map[string]string{}}
+	syncSourceForSession = func(_ context.Context, source, ref string) (string, error) { count++; return source + "-" + ref, nil }
+	session := sourceSession{ctx: context.Background(), caches: map[string]string{}}
 	if _, err := session.source("source", "main"); err != nil {
 		t.Fatal(err)
 	}
@@ -291,12 +292,12 @@ func TestSourceSessionPrefetchesIndependentSourcesConcurrently(t *testing.T) {
 	defer func() { syncSourceForSession = original }()
 	started := make(chan string, 3)
 	release := make(chan struct{})
-	syncSourceForSession = func(source, ref string) (string, error) {
+	syncSourceForSession = func(_ context.Context, source, ref string) (string, error) {
 		started <- source
 		<-release
 		return source, nil
 	}
-	session := newSourceSession(io.Discard)
+	session := newSourceSession(context.Background(), io.Discard)
 	done := make(chan struct{})
 	go func() {
 		session.prefetch([]sourceRequest{{Source: "one"}, {Source: "two"}, {Source: "three"}})
@@ -339,12 +340,11 @@ func TestCheckReportsProgressBeforeRemoteWait(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	original := syncSourceForSession
 	defer func() { syncSourceForSession = original }()
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	syncSourceForSession = func(source, ref string) (string, error) {
+	syncSourceForSession = func(_ context.Context, source, ref string) (string, error) {
 		close(entered)
 		<-release
 		return "", fmt.Errorf("fixture stopped")
@@ -376,6 +376,65 @@ func TestCheckReportsProgressBeforeRemoteWait(t *testing.T) {
 	}
 	if !strings.Contains(progress.String(), "Checking") {
 		t.Fatalf("progress output = %q", progress.String())
+	}
+}
+
+func TestCheckStopsAtNetworkTimeout(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", filepath.Join(dir, "app-data"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "local-app-data"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+
+	root := filepath.Join(dir, "skills")
+	installed := filepath.Join(root, "slow-skill")
+	if err := os.MkdirAll(installed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(installed, "SKILL.md"), []byte("---\nname: slow-skill\ndescription: timeout fixture\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lockPath := filepath.Join(dir, "lock.json")
+	lock := `{"version":3,"skills":{"slow-skill":{"sourceType":"github","sourceUrl":"https://example.invalid/slow.git","skillPath":"skills/slow-skill/SKILL.md","skillFolderHash":"0000000000000000000000000000000000000000"}}}`
+	if err := os.WriteFile(lockPath, []byte(lock), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	original := syncSourceForSession
+	defer func() { syncSourceForSession = original }()
+	syncSourceForSession = func(ctx context.Context, source, ref string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+
+	for _, tc := range []struct {
+		name   string
+		prefix string
+		args   []string
+	}{
+		{name: "command line", args: []string{"--timeout", "25ms"}},
+		{name: "config file", prefix: "network_timeout = \"25ms\"\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			configPath := filepath.Join(dir, strings.ReplaceAll(tc.name, " ", "-")+".toml")
+			config := tc.prefix + fmt.Sprintf("[[roots]]\npath = %q\nhost = \"test\"\nscope = \"user\"\n[[manifests]]\nkind = \"vercel-skills-lock-v3\"\npath = %q\ninstall_root = %q\n", filepath.ToSlash(root), filepath.ToSlash(lockPath), filepath.ToSlash(root))
+			if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var stdout, stderr bytes.Buffer
+			args := append([]string{"check"}, tc.args...)
+			args = append(args, "--config", configPath, "slow-skill")
+			started := time.Now()
+			code := run(args, &stdout, &stderr)
+			if elapsed := time.Since(started); elapsed > time.Second {
+				t.Fatalf("timeout returned after %s, want less than one second", elapsed)
+			}
+			if code != 1 {
+				t.Fatalf("exit code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stdout.String()+stderr.String(), "timeout") {
+				t.Fatalf("timeout was not reported: stdout=%q stderr=%q", stdout.String(), stderr.String())
+			}
+		})
 	}
 }
 
@@ -434,12 +493,12 @@ func TestAuthoritativeClaimConflictsFailClosed(t *testing.T) {
 	manifests := []manifest{{Kind: "vercel-skills-lock-v3", Path: lockPath, InstallRoot: filepath.Join(dir, "skills")}}
 	managed := []managedRoot{{Path: filepath.Join(dir, "skills"), Owner: "codex"}}
 	for _, state := range []*trackedState{{Version: 1}, {Version: 1, Skills: []trackedEntry{{Path: install, Source: "source"}}}} {
-		reports, failed := inspect("check", []skill{item}, state, manifests, managed, io.Discard, io.Discard)
+		reports, failed := inspect(context.Background(), "check", []skill{item}, state, manifests, managed, io.Discard, io.Discard)
 		if !failed || reports[0].Status != "ambiguous provenance" || len(reports[0].Evidence) < 2 {
 			t.Fatalf("conflict: %#v", reports)
 		}
 	}
-	reports, failed := inspect("check", []skill{item}, &trackedState{Version: 1, Skills: []trackedEntry{{Path: install, Source: "source"}}}, manifests, nil, io.Discard, io.Discard)
+	reports, failed := inspect(context.Background(), "check", []skill{item}, &trackedState{Version: 1, Skills: []trackedEntry{{Path: install, Source: "source"}}}, manifests, nil, io.Discard, io.Discard)
 	if !failed || reports[0].Status != "ambiguous provenance" {
 		t.Fatalf("provider explicit: %#v", reports)
 	}
@@ -451,7 +510,7 @@ func TestLegacyDefaultConfigMigratesButCustomPathsDoesNot(t *testing.T) {
 	if err := os.WriteFile(old, []byte(legacyDefaultConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, manifests, managed, _, err := loadConfig(old)
+	_, manifests, managed, _, _, err := loadConfig(old)
 	if err != nil || len(manifests) == 0 || len(managed) == 0 {
 		t.Fatalf("migration: %v %#v %#v", err, manifests, managed)
 	}
@@ -464,7 +523,7 @@ func TestLegacyDefaultConfigMigratesButCustomPathsDoesNot(t *testing.T) {
 	if err := os.WriteFile(custom, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	roots, _, _, _, err := loadConfig(custom)
+	roots, _, _, _, _, err := loadConfig(custom)
 	if err != nil || len(roots) != 1 {
 		t.Fatalf("custom load: %v %#v", err, roots)
 	}
@@ -480,7 +539,7 @@ func TestDefaultConfigHasUniqueStructuredRoots(t *testing.T) {
 	if err := os.WriteFile(path, []byte(defaultConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	roots, _, _, _, err := loadConfig(path)
+	roots, _, _, _, _, err := loadConfig(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -631,7 +690,7 @@ func TestInspectKeepsEarlierAmbiguousFailureAndRendersToBytesBuffer(t *testing.T
 	}
 	items, _ := scan([]scanRoot{{Path: root, Host: "x", Scope: "user"}}, false, io.Discard)
 	var out bytes.Buffer
-	reports, failed := inspect("check", items, &trackedState{Version: 1, Skills: []trackedEntry{{Path: filepath.Join(root, "a"), Source: "x"}}}, []manifest{{Kind: "vercel-skills-lock-v3", Path: lock, InstallRoot: root}}, nil, &out, &out)
+	reports, failed := inspect(context.Background(), "check", items, &trackedState{Version: 1, Skills: []trackedEntry{{Path: filepath.Join(root, "a"), Source: "x"}}}, []manifest{{Kind: "vercel-skills-lock-v3", Path: lock, InstallRoot: root}}, nil, &out, &out)
 	if !failed || len(reports) != 2 || !strings.Contains(out.String(), "ambiguous provenance") {
 		t.Fatalf("failed=%v reports=%#v output=%q", failed, reports, out.String())
 	}
@@ -733,7 +792,7 @@ func TestManifestErrorsAreStableAndBrokenWins(t *testing.T) {
 	if errs[a] != "invalid JSON" || errs[b] != "unsupported schema version: 2" {
 		t.Fatalf("errors=%#v", errs)
 	}
-	reports, failed := inspect("check", []skill{{Name: "x", Path: filepath.Join(dir, "x"), Broken: true, LinkTarget: "missing"}}, &trackedState{Version: 1}, ms, nil, io.Discard, io.Discard)
+	reports, failed := inspect(context.Background(), "check", []skill{{Name: "x", Path: filepath.Join(dir, "x"), Broken: true, LinkTarget: "missing"}}, &trackedState{Version: 1}, ms, nil, io.Discard, io.Discard)
 	if failed || reports[0].Provider != "filesystem" {
 		t.Fatalf("broken=%#v failed=%v", reports, failed)
 	}

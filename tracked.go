@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type trackedEntry struct {
@@ -107,12 +109,12 @@ func (s *trackedState) put(entry trackedEntry) {
 	s.Skills = append(s.Skills, entry)
 }
 
-func trackCopiedSkill(item skill, source, ref, skillPath string, state *trackedState) error {
+func trackCopiedSkill(ctx context.Context, item skill, source, ref, skillPath string, state *trackedState) error {
 	if source == "" {
 		return fmt.Errorf("track requires --source")
 	}
 	source = normalizeSource(source)
-	cache, err := syncSource(source, ref)
+	cache, err := syncSource(ctx, source, ref)
 	if err != nil {
 		return err
 	}
@@ -280,8 +282,8 @@ func processTracked(action string, items []skill, state *trackedState, session *
 	return failed
 }
 
-func prepareSource(source, ref, skillPath string) (string, string, error) {
-	cache, err := syncSource(source, ref)
+func prepareSource(ctx context.Context, source, ref, skillPath string) (string, string, error) {
+	cache, err := syncSource(ctx, source, ref)
 	if err != nil {
 		return "", "", err
 	}
@@ -292,7 +294,7 @@ func prepareSource(source, ref, skillPath string) (string, string, error) {
 	return cache, remoteSkill, nil
 }
 
-func syncSource(source, ref string) (string, error) {
+func syncSource(ctx context.Context, source, ref string) (string, error) {
 	cacheBase, err := os.UserCacheDir()
 	if err != nil {
 		return "", fmt.Errorf("find user cache directory: %w", err)
@@ -303,12 +305,16 @@ func syncSource(source, ref string) (string, error) {
 		if err := os.MkdirAll(filepath.Dir(cache), 0o755); err != nil {
 			return "", fmt.Errorf("create source cache: %w", err)
 		}
-		cmd := exec.Command("git", "clone", "--no-checkout", source, cache)
+		cmd := exec.CommandContext(ctx, "git", "clone", "--no-checkout", source, cache)
+		cmd.WaitDelay = time.Second
 		if output, err := cmd.CombinedOutput(); err != nil {
+			if ctx.Err() != nil {
+				return "", fmt.Errorf("git clone: network timeout: %w", ctx.Err())
+			}
 			return "", fmt.Errorf("git clone: %s", strings.TrimSpace(string(output)))
 		}
 	}
-	if _, err := gitOutput(cache, "fetch", "--prune", "--recurse-submodules=no", "origin"); err != nil {
+	if _, err := gitNetworkOutput(ctx, cache, "fetch", "--prune", "--recurse-submodules=no", "origin"); err != nil {
 		return "", fmt.Errorf("git fetch: %w", err)
 	}
 	revision, err := resolveSourceRevision(cache, ref)

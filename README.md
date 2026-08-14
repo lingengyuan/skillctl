@@ -32,6 +32,7 @@ skillctl check
 skillctl update
 skillctl check obsidian-assistant
 skillctl check --json
+skillctl check --timeout 30s
 skillctl check --path ~/.codex/skills --path ~/.claude/skills
 ```
 
@@ -55,13 +56,15 @@ Git worktree 和 `skillctl track` 支持安全更新。Vercel Skills v3 lock 和
 - Linux：`~/.config/skillctl/config.toml`
 
 ```toml
+network_timeout = "10s"
+
 [[roots]]
 path = "~/.codex/skills"
 host = "codex"
 scope = "user"
 ```
 
-`[[roots]]` 可以重复配置。也可以使用 `--config FILE` 临时指定配置文件。
+`network_timeout` 默认是 `10s`，也可以用 `--timeout` 临时覆盖。`[[roots]]` 可以重复配置。也可以使用 `--config FILE` 临时指定配置文件。
 
 ## 开发
 

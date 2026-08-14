@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -51,9 +52,9 @@ type vercelLockEntry struct {
 	SkillFolderHash string `json:"skillFolderHash"`
 }
 
-func inspect(action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, stdout, progress io.Writer) ([]report, bool) {
+func inspect(ctx context.Context, action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, stdout, progress io.Writer) ([]report, bool) {
 	locks, lockErrors := loadVercelLocks(manifests)
-	session := newSourceSession(progress)
+	session := newSourceSession(ctx, progress)
 	defer session.close()
 	var sourceRequests []sourceRequest
 	for _, item := range skills {
@@ -222,6 +223,7 @@ func vercelStatus(action string, available bool, drift string) string {
 // each normalized source/ref pair once and share one Git object process per
 // cached repository.
 type sourceSession struct {
+	ctx          context.Context
 	caches       map[string]string
 	sourceErrors map[string]error
 	objects      map[string]*gitObjectReader
@@ -230,8 +232,9 @@ type sourceSession struct {
 	sourceCount  int
 }
 
-func newSourceSession(progress io.Writer) *sourceSession {
+func newSourceSession(ctx context.Context, progress io.Writer) *sourceSession {
 	return &sourceSession{
+		ctx:          ctx,
 		caches:       map[string]string{},
 		sourceErrors: map[string]error{},
 		objects:      map[string]*gitObjectReader{},
@@ -295,7 +298,7 @@ func (s *sourceSession) prefetch(requests []sourceRequest) {
 	for i := 0; i < workerCount; i++ {
 		go func() {
 			for item := range jobs {
-				cache, err := syncSourceForSession(item.Source, item.Ref)
+				cache, err := syncSourceForSession(s.ctx, item.Source, item.Ref)
 				results <- sourceResult{pendingSource: item, cache: cache, err: err}
 			}
 		}()
@@ -306,6 +309,9 @@ func (s *sourceSession) prefetch(requests []sourceRequest) {
 	close(jobs)
 	for range pending {
 		result := <-results
+		if result.err != nil && s.ctx.Err() != nil {
+			result.err = fmt.Errorf("network timeout: %w", s.ctx.Err())
+		}
 		elapsed := time.Since(result.started).Round(time.Millisecond)
 		if result.err != nil {
 			s.sourceErrors[result.key] = result.err
@@ -330,8 +336,11 @@ func (s *sourceSession) source(source, ref string) (string, error) {
 	number := s.sourceCount
 	started := time.Now()
 	s.progressf("Checking remote source %d...\n", number)
-	cache, err := syncSourceForSession(source, ref)
+	cache, err := syncSourceForSession(s.ctx, source, ref)
 	if err != nil {
+		if s.ctx.Err() != nil {
+			err = fmt.Errorf("network timeout: %w", s.ctx.Err())
+		}
 		s.sourceErrors[key] = err
 		s.progressf("Remote source %d failed (%s).\n", number, time.Since(started).Round(time.Millisecond))
 		return "", err

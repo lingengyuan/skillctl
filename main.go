@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,8 @@ import (
 )
 
 var version = "0.2.0"
+
+const defaultNetworkTimeout = 10 * time.Second
 
 var defaultConfig = `# Directories are scanned recursively for SKILL.md files.
 # Relative paths are resolved from this file.
@@ -88,10 +91,11 @@ paths = [
 `
 
 type config struct {
-	Paths        []string      `toml:"paths"`
-	Roots        []scanRoot    `toml:"roots"`
-	Manifests    []manifest    `toml:"manifests"`
-	ManagedRoots []managedRoot `toml:"managed_roots"`
+	NetworkTimeout string        `toml:"network_timeout"`
+	Paths          []string      `toml:"paths"`
+	Roots          []scanRoot    `toml:"roots"`
+	Manifests      []manifest    `toml:"manifests"`
+	ManagedRoots   []managedRoot `toml:"managed_roots"`
 }
 
 type scanRoot struct {
@@ -133,6 +137,7 @@ type options struct {
 	Ref        string
 	SkillPath  string
 	JSON       bool
+	Timeout    time.Duration
 }
 
 func main() {
@@ -168,9 +173,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var roots []scanRoot
 	var manifests []manifest
 	var managed []managedRoot
+	networkTimeout := defaultNetworkTimeout
 	ignoreMissing := false
 	var err error
-	roots, manifests, managed, ignoreMissing, err = loadConfig(opt.ConfigPath)
+	roots, manifests, managed, networkTimeout, ignoreMissing, err = loadConfig(opt.ConfigPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
@@ -180,6 +186,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		for _, path := range opt.Paths {
 			roots = append(roots, scanRoot{Path: resolvePath(path, "."), Host: "manual", Scope: "local"})
 		}
+	}
+	if opt.Timeout > 0 {
+		networkTimeout = opt.Timeout
 	}
 
 	progress := io.Writer(io.Discard)
@@ -215,12 +224,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), networkTimeout)
+	defer cancel()
 	if args[0] == "track" {
 		if len(skills) != 1 {
 			fmt.Fprintln(stderr, "track requires exactly one unambiguous skill")
 			return 1
 		}
-		if err := trackCopiedSkill(skills[0], opt.Source, opt.Ref, opt.SkillPath, state); err != nil {
+		if err := trackCopiedSkill(ctx, skills[0], opt.Source, opt.Ref, opt.SkillPath, state); err != nil {
 			fmt.Fprintf(stderr, "%s: failed (%s)\n", skills[0].Name, oneLine(err.Error()))
 			return 1
 		}
@@ -232,7 +243,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		resultWriter = io.Discard
 	}
 	fmt.Fprintf(progress, "Checking %d skill instances...\n", len(skills))
-	reports, gitFailed := inspect(args[0], skills, state, manifests, managed, resultWriter, progress)
+	reports, gitFailed := inspect(ctx, args[0], skills, state, manifests, managed, resultWriter, progress)
 	if opt.JSON {
 		if err := json.NewEncoder(stdout).Encode(reports); err != nil {
 			fmt.Fprintln(stderr, err)
@@ -271,6 +282,18 @@ func parseCommand(args []string, stderr io.Writer) (options, int) {
 		case "--json":
 			opt.JSON = true
 			args = args[1:]
+		case "--timeout":
+			if len(args) < 2 {
+				fmt.Fprintln(stderr, "--timeout requires a positive duration")
+				return options{}, 2
+			}
+			duration, err := time.ParseDuration(args[1])
+			if err != nil || duration <= 0 {
+				fmt.Fprintln(stderr, "--timeout requires a positive duration, for example 10s")
+				return options{}, 2
+			}
+			opt.Timeout = duration
+			args = args[2:]
 		case "--source":
 			if len(args) < 2 {
 				fmt.Fprintln(stderr, "--source requires a Git URL or path")
@@ -307,86 +330,93 @@ func parseCommand(args []string, stderr io.Writer) (options, int) {
 	return opt, 0
 }
 
-func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, bool, error) {
+func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, time.Duration, bool, error) {
 	path := explicit
 	if path == "" {
 		dir, err := os.UserConfigDir()
 		if err != nil {
-			return nil, nil, nil, false, fmt.Errorf("find user config directory: %w", err)
+			return nil, nil, nil, 0, false, fmt.Errorf("find user config directory: %w", err)
 		}
 		path = filepath.Join(dir, "skillctl", "config.toml")
 	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) && explicit == "" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return nil, nil, nil, false, fmt.Errorf("create config directory: %w", err)
+			return nil, nil, nil, 0, false, fmt.Errorf("create config directory: %w", err)
 		}
 		if err := os.WriteFile(path, []byte(defaultConfig), 0o644); err != nil {
-			return nil, nil, nil, false, fmt.Errorf("create default config: %w", err)
+			return nil, nil, nil, 0, false, fmt.Errorf("create default config: %w", err)
 		}
 	} else if err != nil {
-		return nil, nil, nil, false, fmt.Errorf("read config: %w", err)
+		return nil, nil, nil, 0, false, fmt.Errorf("read config: %w", err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, nil, false, fmt.Errorf("read config: %w", err)
+		return nil, nil, nil, 0, false, fmt.Errorf("read config: %w", err)
 	}
 	if string(content) == legacyDefaultConfig {
 		temp, err := os.CreateTemp(filepath.Dir(path), "config-*.toml")
 		if err != nil {
-			return nil, nil, nil, false, fmt.Errorf("migrate legacy config: %w", err)
+			return nil, nil, nil, 0, false, fmt.Errorf("migrate legacy config: %w", err)
 		}
 		tempName := temp.Name()
 		defer os.Remove(tempName)
 		if _, err := temp.WriteString(defaultConfig); err != nil {
 			temp.Close()
-			return nil, nil, nil, false, fmt.Errorf("migrate legacy config: %w", err)
+			return nil, nil, nil, 0, false, fmt.Errorf("migrate legacy config: %w", err)
 		}
 		if err := temp.Close(); err != nil {
-			return nil, nil, nil, false, fmt.Errorf("migrate legacy config: %w", err)
+			return nil, nil, nil, 0, false, fmt.Errorf("migrate legacy config: %w", err)
 		}
 		if err := os.Rename(tempName, path); err != nil {
-			return nil, nil, nil, false, fmt.Errorf("migrate legacy config: %w", err)
+			return nil, nil, nil, 0, false, fmt.Errorf("migrate legacy config: %w", err)
 		}
 		content = []byte(defaultConfig)
 	}
 	var cfg config
 	meta, err := toml.Decode(string(content), &cfg)
 	if err != nil {
-		return nil, nil, nil, false, fmt.Errorf("invalid config: %w", err)
+		return nil, nil, nil, 0, false, fmt.Errorf("invalid config: %w", err)
 	}
 	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
-		return nil, nil, nil, false, fmt.Errorf("invalid config: unknown field %q", undecoded[0])
+		return nil, nil, nil, 0, false, fmt.Errorf("invalid config: unknown field %q", undecoded[0])
+	}
+	networkTimeout := defaultNetworkTimeout
+	if cfg.NetworkTimeout != "" {
+		networkTimeout, err = time.ParseDuration(cfg.NetworkTimeout)
+		if err != nil || networkTimeout <= 0 {
+			return nil, nil, nil, 0, false, fmt.Errorf("invalid config: network_timeout must be a positive duration")
+		}
 	}
 	base := filepath.Dir(path)
 	for _, path := range cfg.Paths {
 		cfg.Roots = append(cfg.Roots, scanRoot{Path: path, Host: "legacy", Scope: "user"})
 	}
 	if len(cfg.Roots) == 0 {
-		return nil, nil, nil, false, fmt.Errorf("invalid config: at least one root is required")
+		return nil, nil, nil, 0, false, fmt.Errorf("invalid config: at least one root is required")
 	}
 	for i := range cfg.Roots {
 		if cfg.Roots[i].Path == "" || cfg.Roots[i].Host == "" || cfg.Roots[i].Scope == "" {
-			return nil, nil, nil, false, fmt.Errorf("invalid config: roots require path, host, and scope")
+			return nil, nil, nil, 0, false, fmt.Errorf("invalid config: roots require path, host, and scope")
 		}
 		cfg.Roots[i].Path = resolvePath(cfg.Roots[i].Path, base)
 	}
 	for i := range cfg.Manifests {
 		if cfg.Manifests[i].Kind != "vercel-skills-lock-v3" {
-			return nil, nil, nil, false, fmt.Errorf("invalid config: unsupported manifest kind %q", cfg.Manifests[i].Kind)
+			return nil, nil, nil, 0, false, fmt.Errorf("invalid config: unsupported manifest kind %q", cfg.Manifests[i].Kind)
 		}
 		if cfg.Manifests[i].Path == "" || cfg.Manifests[i].InstallRoot == "" {
-			return nil, nil, nil, false, fmt.Errorf("invalid config: manifests require path and install_root")
+			return nil, nil, nil, 0, false, fmt.Errorf("invalid config: manifests require path and install_root")
 		}
 		cfg.Manifests[i].Path = resolvePath(cfg.Manifests[i].Path, base)
 		cfg.Manifests[i].InstallRoot = resolvePath(cfg.Manifests[i].InstallRoot, base)
 	}
 	for i := range cfg.ManagedRoots {
 		if cfg.ManagedRoots[i].Path == "" || cfg.ManagedRoots[i].Owner == "" {
-			return nil, nil, nil, false, fmt.Errorf("invalid config: managed_roots require path and owner")
+			return nil, nil, nil, 0, false, fmt.Errorf("invalid config: managed_roots require path and owner")
 		}
 		cfg.ManagedRoots[i].Path = resolvePath(cfg.ManagedRoots[i].Path, base)
 	}
-	return cfg.Roots, cfg.Manifests, cfg.ManagedRoots, string(content) == defaultConfig, nil
+	return cfg.Roots, cfg.Manifests, cfg.ManagedRoots, networkTimeout, string(content) == defaultConfig, nil
 }
 
 func resolvePath(path, base string) string {
@@ -643,7 +673,7 @@ func processGit(action string, skills []skill, state *trackedState, session *sou
 		if sink, ok := stdout.(*reportSink); ok {
 			sink.markGit(repos[root].Skills, root)
 		}
-		if processRepository(action, repos[root], stdout, stderr) {
+		if processRepository(session.ctx, action, repos[root], stdout, stderr) {
 			failed = true
 		}
 	}
@@ -689,7 +719,7 @@ func gitTracks(root, path string) bool {
 	return err == nil
 }
 
-func processRepository(action string, repo *repository, stdout, stderr io.Writer) bool {
+func processRepository(ctx context.Context, action string, repo *repository, stdout, stderr io.Writer) bool {
 	branch, err := gitOutput(repo.Root, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		printSkills(stdout, repo.Skills, "skipped (detached HEAD)")
@@ -704,7 +734,7 @@ func processRepository(action string, repo *repository, stdout, stderr io.Writer
 		printSkills(stdout, repo.Skills, "skipped (no upstream)")
 		return false
 	}
-	if _, err := gitOutput(repo.Root, "fetch", "--prune", "--recurse-submodules=no", remote); err != nil {
+	if _, err := gitNetworkOutput(ctx, repo.Root, "fetch", "--prune", "--recurse-submodules=no", remote); err != nil {
 		printSkills(stderr, repo.Skills, "failed (git fetch: "+oneLine(err.Error())+")")
 		return true
 	}
@@ -758,7 +788,7 @@ func processRepository(action string, repo *repository, stdout, stderr io.Writer
 		return false
 	}
 	oldHead, _ := gitOutput(repo.Root, "rev-parse", "--short", "HEAD")
-	if _, err := gitOutput(repo.Root, "-c", "submodule.recurse=false", "pull", "--ff-only", "--no-rebase", "--recurse-submodules=no"); err != nil {
+	if _, err := gitNetworkOutput(ctx, repo.Root, "-c", "submodule.recurse=false", "pull", "--ff-only", "--no-rebase", "--recurse-submodules=no"); err != nil {
 		printSkills(stderr, repo.Skills, "failed (git pull: "+oneLine(err.Error())+")")
 		return true
 	}
@@ -778,6 +808,19 @@ func processRepository(action string, repo *repository, stdout, stderr io.Writer
 func gitOutput(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("%s", strings.TrimSpace(string(output)))
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+func gitNetworkOutput(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.WaitDelay = time.Second
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("network timeout: %w", ctx.Err())
+	}
 	if err != nil {
 		return "", fmt.Errorf("%s", strings.TrimSpace(string(output)))
 	}
@@ -867,5 +910,5 @@ func selectSkills(all []skill, names []string) ([]skill, error) {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "Usage: skillctl <check|update|track> [options] [skill...]")
+	fmt.Fprintln(w, "Usage: skillctl <check|update|track> [--timeout 10s] [options] [skill...]")
 }
