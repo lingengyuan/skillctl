@@ -451,8 +451,7 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 			failed = true
 			continue
 		}
-		if visitedDirs.contains(rootInfo) {
-			canonical, _ := filepath.EvalSymlinks(root)
+		if canonical, ok := visitedDirs.pathFor(rootInfo); ok {
 			addAliasesForVisitedDir(skills, root, canonical)
 			continue
 		}
@@ -509,12 +508,15 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 }
 
 func addAliasesForVisitedDir(skills []skill, alias, canonical string) {
-	aliasInfo, _ := os.Stat(alias)
+	var aliasInfo os.FileInfo
+	if canonical == "" {
+		aliasInfo, _ = os.Stat(alias)
+	}
 	for i := range skills {
 		matchedRoot := ""
 		if canonical != "" && within(canonical, skills[i].Path) {
 			matchedRoot = canonical
-		} else if aliasInfo != nil {
+		} else if canonical == "" && aliasInfo != nil {
 			for candidate := skills[i].Path; ; candidate = filepath.Dir(candidate) {
 				candidateInfo, err := os.Stat(candidate)
 				if err == nil && os.SameFile(aliasInfo, candidateInfo) {
@@ -546,21 +548,35 @@ func appendUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
+type fileIdentity struct {
+	info os.FileInfo
+	path string
+}
+
 type fileIdentitySet struct {
-	items []os.FileInfo
+	items []fileIdentity
 }
 
 func (s *fileIdentitySet) contains(info os.FileInfo) bool {
+	_, found := s.pathFor(info)
+	return found
+}
+
+func (s *fileIdentitySet) pathFor(info os.FileInfo) (string, bool) {
 	for _, item := range s.items {
-		if os.SameFile(item, info) {
-			return true
+		if os.SameFile(item.info, info) {
+			return item.path, true
 		}
 	}
-	return false
+	return "", false
 }
 
 func (s *fileIdentitySet) add(info os.FileInfo) {
-	s.items = append(s.items, info)
+	s.addPath(info, "")
+}
+
+func (s *fileIdentitySet) addPath(info os.FileInfo, path string) {
+	s.items = append(s.items, fileIdentity{info: info, path: path})
 }
 
 func walkFollowingLinks(dir string, visited *fileIdentitySet, stderr io.Writer, visitSkill func(string) error, visitBroken func(string, string), visitAlias func(string, string)) error {
@@ -568,13 +584,18 @@ func walkFollowingLinks(dir string, visited *fileIdentitySet, stderr io.Writer, 
 	if err != nil {
 		return err
 	}
-	if visited.contains(dirInfo) {
-		if real, err := filepath.EvalSymlinks(dir); err == nil {
-			visitAlias(dir, real)
-		}
+	if canonical, found := visited.pathFor(dirInfo); found {
+		visitAlias(dir, canonical)
 		return nil
 	}
-	visited.add(dirInfo)
+	canonical := dir
+	if linkInfo, linkErr := os.Lstat(dir); linkErr == nil && linkInfo.Mode()&os.ModeSymlink != 0 {
+		canonical, err = filepath.EvalSymlinks(dir)
+		if err != nil {
+			return err
+		}
+	}
+	visited.addPath(dirInfo, canonical)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
