@@ -13,7 +13,7 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -29,7 +29,9 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Test
-        run: go test ./... -count=1 -timeout 10m
+        run: go test ./... -count=1 -timeout 30s
+      - name: Git integration
+        run: go test -tags=integration . -run '^TestIntegration' -count=1 -timeout 90s
       - name: Vet
         run: go vet ./...
 

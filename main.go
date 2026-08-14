@@ -436,13 +436,13 @@ func resolvePath(path, base string) string {
 }
 
 func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool) {
-	seen := &fileIdentitySet{}
-	visitedDirs := &fileIdentitySet{}
+	seen := map[string]int{}
+	visitedDirs := map[string]string{}
 	var skills []skill
 	failed := false
 	for _, rootSpec := range roots {
 		root := rootSpec.Path
-		rootInfo, err := os.Stat(root)
+		_, err := os.Stat(root)
 		if err != nil {
 			if ignoreMissing && errors.Is(err, os.ErrNotExist) {
 				continue
@@ -451,40 +451,26 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 			failed = true
 			continue
 		}
-		if canonical, ok := visitedDirs.pathFor(rootInfo); ok {
-			addAliasesForVisitedDir(skills, root, canonical)
-			continue
-		}
-		realRoot, err := filepath.Abs(root)
+		realRoot, err := filepath.EvalSymlinks(root)
 		if err != nil {
 			realRoot = root
 		}
-		err = walkFollowingLinks(root, visitedDirs, stderr, func(path string) error {
+		if absolute, absErr := filepath.Abs(realRoot); absErr == nil {
+			realRoot = absolute
+		}
+		err = walkFollowingLinks(root, visitedDirs, func(path, real string) error {
 			dir := filepath.Dir(path)
-			info, err := os.Stat(path)
-			if err != nil {
-				return err
-			}
-			real, err := filepath.EvalSymlinks(dir)
-			if err != nil {
-				return err
-			}
 			name, valid := readSkill(path, filepath.Base(real))
 			if !valid {
 				fmt.Fprintf(stderr, "%s: skipped (invalid skill)\n", path)
 				return nil
 			}
-			if seen.contains(info) {
-				for i := range skills {
-					existing, statErr := os.Stat(filepath.Join(skills[i].Path, "SKILL.md"))
-					if samePath(skills[i].Path, real) || statErr == nil && os.SameFile(existing, info) {
-						skills[i].Aliases = appendUnique(skills[i].Aliases, dir)
-						return nil
-					}
-				}
+			key := canonicalPathKey(real)
+			if index, ok := seen[key]; ok {
+				skills[index].Aliases = appendUnique(skills[index].Aliases, dir)
 				return nil
 			}
-			seen.add(info)
+			seen[key] = len(skills)
 			skills = append(skills, skill{Name: name, Path: real, Aliases: []string{dir}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope})
 			return nil
 		}, func(path, target string) {
@@ -508,31 +494,11 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 }
 
 func addAliasesForVisitedDir(skills []skill, alias, canonical string) {
-	var aliasInfo os.FileInfo
-	if canonical == "" {
-		aliasInfo, _ = os.Stat(alias)
-	}
 	for i := range skills {
-		matchedRoot := ""
-		if canonical != "" && within(canonical, skills[i].Path) {
-			matchedRoot = canonical
-		} else if canonical == "" && aliasInfo != nil {
-			for candidate := skills[i].Path; ; candidate = filepath.Dir(candidate) {
-				candidateInfo, err := os.Stat(candidate)
-				if err == nil && os.SameFile(aliasInfo, candidateInfo) {
-					matchedRoot = candidate
-					break
-				}
-				parent := filepath.Dir(candidate)
-				if parent == candidate {
-					break
-				}
-			}
-		}
-		if matchedRoot == "" {
+		if !within(canonical, skills[i].Path) {
 			continue
 		}
-		rel, err := filepath.Rel(matchedRoot, skills[i].Path)
+		rel, err := filepath.Rel(canonical, skills[i].Path)
 		if err == nil {
 			skills[i].Aliases = appendUnique(skills[i].Aliases, filepath.Join(alias, rel))
 		}
@@ -548,54 +514,24 @@ func appendUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
-type fileIdentity struct {
-	info os.FileInfo
-	path string
-}
-
-type fileIdentitySet struct {
-	items []fileIdentity
-}
-
-func (s *fileIdentitySet) contains(info os.FileInfo) bool {
-	_, found := s.pathFor(info)
-	return found
-}
-
-func (s *fileIdentitySet) pathFor(info os.FileInfo) (string, bool) {
-	for _, item := range s.items {
-		if os.SameFile(item.info, info) {
-			return item.path, true
-		}
+func canonicalPathKey(path string) string {
+	clean := filepath.Clean(path)
+	if filepath.Separator == '\\' {
+		return strings.ToLower(clean)
 	}
-	return "", false
+	return clean
 }
 
-func (s *fileIdentitySet) add(info os.FileInfo) {
-	s.addPath(info, "")
-}
-
-func (s *fileIdentitySet) addPath(info os.FileInfo, path string) {
-	s.items = append(s.items, fileIdentity{info: info, path: path})
-}
-
-func walkFollowingLinks(dir string, visited *fileIdentitySet, stderr io.Writer, visitSkill func(string) error, visitBroken func(string, string), visitAlias func(string, string)) error {
-	dirInfo, err := os.Stat(dir)
+func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(string, string) error, visitBroken func(string, string), visitAlias func(string, string)) error {
+	key, canonical, err := identifyDirectory(dir)
 	if err != nil {
 		return err
 	}
-	if canonical, found := visited.pathFor(dirInfo); found {
-		visitAlias(dir, canonical)
+	if existing, found := visited[key]; found {
+		visitAlias(dir, existing)
 		return nil
 	}
-	canonical := dir
-	if linkInfo, linkErr := os.Lstat(dir); linkErr == nil && linkInfo.Mode()&os.ModeSymlink != 0 {
-		canonical, err = filepath.EvalSymlinks(dir)
-		if err != nil {
-			return err
-		}
-	}
-	visited.addPath(dirInfo, canonical)
+	visited[key] = canonical
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -621,7 +557,7 @@ func walkFollowingLinks(dir string, visited *fileIdentitySet, stderr io.Writer, 
 			return err
 		}
 		if info.IsDir() {
-			if err := walkFollowingLinks(path, visited, stderr, visitSkill, visitBroken, visitAlias); err != nil {
+			if err := walkFollowingLinks(path, visited, visitSkill, visitBroken, visitAlias); err != nil {
 				if errors.Is(err, os.ErrNotExist) {
 					visitBroken(path, "")
 					continue
@@ -631,7 +567,7 @@ func walkFollowingLinks(dir string, visited *fileIdentitySet, stderr io.Writer, 
 			continue
 		}
 		if entry.Name() == "SKILL.md" {
-			if err := visitSkill(path); err != nil {
+			if err := visitSkill(path, canonical); err != nil {
 				return err
 			}
 		}
@@ -709,6 +645,36 @@ type gitRootResult struct {
 	found bool
 }
 
+type repositoryDecision struct {
+	message string
+	pull    bool
+}
+
+func decideRepository(action string, allowed, dirty bool, ahead, behind int) repositoryDecision {
+	if dirty {
+		if behind > 0 {
+			return repositoryDecision{message: fmt.Sprintf("update available (behind %d commits), skipped (working tree is dirty)", behind)}
+		}
+		return repositoryDecision{message: "skipped (working tree is dirty)"}
+	}
+	if ahead > 0 && behind > 0 {
+		return repositoryDecision{message: "skipped (branch has diverged)"}
+	}
+	if ahead > 0 {
+		return repositoryDecision{message: fmt.Sprintf("skipped (ahead by %d commits)", ahead)}
+	}
+	if behind == 0 {
+		return repositoryDecision{message: "up to date"}
+	}
+	if action == "check" {
+		return repositoryDecision{message: fmt.Sprintf("update available (behind %d commits)", behind)}
+	}
+	if !allowed {
+		return repositoryDecision{message: "skipped (repository root is outside the scan path)"}
+	}
+	return repositoryDecision{pull: true}
+}
+
 func findGitRoot(path string, cache map[string]gitRootResult) (string, bool) {
 	dir := filepath.Clean(path)
 	var visited []string
@@ -780,32 +746,9 @@ func processRepository(ctx context.Context, action string, repo *repository, std
 		printSkills(stderr, repo.Skills, "failed (invalid Git comparison)")
 		return true
 	}
-	if dirtyOutput != "" {
-		if behind > 0 {
-			printSkills(stdout, repo.Skills, fmt.Sprintf("update available (behind %d commits), skipped (working tree is dirty)", behind))
-		} else {
-			printSkills(stdout, repo.Skills, "skipped (working tree is dirty)")
-		}
-		return false
-	}
-	if ahead > 0 && behind > 0 {
-		printSkills(stdout, repo.Skills, "skipped (branch has diverged)")
-		return false
-	}
-	if ahead > 0 {
-		printSkills(stdout, repo.Skills, fmt.Sprintf("skipped (ahead by %d commits)", ahead))
-		return false
-	}
-	if behind == 0 {
-		printSkills(stdout, repo.Skills, "up to date")
-		return false
-	}
-	if action == "check" {
-		printSkills(stdout, repo.Skills, fmt.Sprintf("update available (behind %d commits)", behind))
-		return false
-	}
-	if !repo.Allowed {
-		printSkills(stdout, repo.Skills, "skipped (repository root is outside the scan path)")
+	decision := decideRepository(action, repo.Allowed, dirtyOutput != "", ahead, behind)
+	if !decision.pull {
+		printSkills(stdout, repo.Skills, decision.message)
 		return false
 	}
 	oldHead, _ := gitOutput(repo.Root, "rev-parse", "--short", "HEAD")

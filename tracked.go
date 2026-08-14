@@ -282,18 +282,6 @@ func processTracked(action string, items []skill, state *trackedState, session *
 	return failed
 }
 
-func prepareSource(ctx context.Context, source, ref, skillPath string) (string, string, error) {
-	cache, err := syncSource(ctx, source, ref)
-	if err != nil {
-		return "", "", err
-	}
-	remoteSkill, err := sourceSkillPath(cache, skillPath)
-	if err != nil {
-		return "", "", err
-	}
-	return cache, remoteSkill, nil
-}
-
 func syncSource(ctx context.Context, source, ref string) (string, error) {
 	cacheBase, err := os.UserCacheDir()
 	if err != nil {

@@ -72,6 +72,7 @@ scope = "user"
 
 ```sh
 go test ./...
+go test -tags=integration . -run '^TestIntegration'
 go vet ./...
 ```
 
