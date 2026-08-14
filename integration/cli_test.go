@@ -27,7 +27,7 @@ func TestCheckCreatesDefaultConfigAndFindsRecursiveSkill(t *testing.T) {
 	if result.exitCode != 0 {
 		t.Fatalf("check exit code = %d, output:\n%s", result.exitCode, result.output)
 	}
-	if !strings.Contains(result.output, "demo-skill: unmanaged (source unknown)") {
+	if !strings.Contains(result.output, "demo-skill [local-authoring, user]: local/untracked (no update source)") {
 		t.Fatalf("output does not report the discovered skill:\n%s", result.output)
 	}
 
@@ -51,7 +51,7 @@ func TestCheckAndUpdateAgainstLocalRemote(t *testing.T) {
 	git(t, seed, "push")
 
 	check := runSkillctl(t, home, "check", "--path", local)
-	if check.exitCode != 0 || !strings.Contains(check.output, "demo-skill: update available (behind 1 commits)") || !strings.Contains(check.output, "sibling-skill: update available (behind 1 commits)") {
+	if check.exitCode != 0 || !strings.Contains(check.output, "demo-skill [git-worktree, repository]: update available (behind 1 commits)") || !strings.Contains(check.output, "sibling-skill [git-worktree, repository]: update available (behind 1 commits)") {
 		t.Fatalf("unexpected check result (%d):\n%s", check.exitCode, check.output)
 	}
 
@@ -77,7 +77,7 @@ func TestCheckSafelySkipsNoUpstreamAheadAndDivergedRepositories(t *testing.T) {
 		git(t, repo, "commit", "-m", "initial")
 
 		result := runSkillctl(t, home, "check", "--path", repo)
-		if result.exitCode != 0 || !strings.Contains(result.output, "local-skill: skipped (no upstream)") {
+		if result.exitCode != 0 || !strings.Contains(result.output, "local-skill [git-worktree, repository]: skipped (no upstream)") {
 			t.Fatalf("unexpected no-upstream result (%d):\n%s", result.exitCode, result.output)
 		}
 	})
@@ -92,7 +92,7 @@ func TestCheckSafelySkipsNoUpstreamAheadAndDivergedRepositories(t *testing.T) {
 		git(t, local, "commit", "-m", "ahead")
 
 		result := runSkillctl(t, home, "update", "--path", local)
-		if result.exitCode != 0 || !strings.Contains(result.output, "ahead-skill: skipped (ahead by 1 commits)") {
+		if result.exitCode != 0 || !strings.Contains(result.output, "ahead-skill [git-worktree, repository]: skipped (ahead by 1 commits)") {
 			t.Fatalf("unexpected ahead result (%d):\n%s", result.exitCode, result.output)
 		}
 	})
@@ -111,7 +111,7 @@ func TestCheckSafelySkipsNoUpstreamAheadAndDivergedRepositories(t *testing.T) {
 		git(t, seed, "push")
 
 		result := runSkillctl(t, home, "update", "--path", local)
-		if result.exitCode != 0 || !strings.Contains(result.output, "diverged-skill: skipped (branch has diverged)") {
+		if result.exitCode != 0 || !strings.Contains(result.output, "diverged-skill [git-worktree, repository]: skipped (branch has diverged)") {
 			t.Fatalf("unexpected diverged result (%d):\n%s", result.exitCode, result.output)
 		}
 	})
@@ -135,12 +135,12 @@ func TestTrackedCopiedSkillCanCheckAndUpdate(t *testing.T) {
 	git(t, seed, "push")
 
 	check := runSkillctl(t, home, "check", "--path", installedRoot)
-	if check.exitCode != 0 || !strings.Contains(check.output, "copied-skill: update available") {
+	if check.exitCode != 0 || !strings.Contains(check.output, "copied-skill [skillctl-track-v1, skillctl]: update available") {
 		t.Fatalf("unexpected copied check result (%d):\n%s", check.exitCode, check.output)
 	}
 
 	update := runSkillctl(t, home, "update", "--path", installedRoot)
-	if update.exitCode != 0 || !strings.Contains(update.output, "copied-skill: updated") {
+	if update.exitCode != 0 || !strings.Contains(update.output, "copied-skill [skillctl-track-v1, skillctl]: updated") {
 		t.Fatalf("unexpected copied update result (%d):\n%s", update.exitCode, update.output)
 	}
 	if content, err := os.ReadFile(filepath.Join(installedSkill, "new.txt")); err != nil || string(content) != "remote content" {
@@ -172,7 +172,7 @@ func TestTrackedCopiedSkillSourceOverridesEnclosingRepository(t *testing.T) {
 	git(t, seed, "push")
 
 	result := runSkillctl(t, home, "check", "--path", installedRoot)
-	if result.exitCode != 0 || !strings.Contains(result.output, "nested-copy-skill: update available") {
+	if result.exitCode != 0 || !strings.Contains(result.output, "nested-copy-skill [skillctl-track-v1, skillctl]: update available") {
 		t.Fatalf("tracked source did not override the enclosing repository (%d):\n%s", result.exitCode, result.output)
 	}
 }
@@ -237,7 +237,7 @@ func TestTrackRecognizesAnOlderExactSourceVersion(t *testing.T) {
 		t.Fatalf("unexpected historical track result (%d):\n%s", track.exitCode, track.output)
 	}
 	check := runSkillctl(t, home, "check", "--path", installedRoot)
-	if check.exitCode != 0 || !strings.Contains(check.output, "older-skill: update available") {
+	if check.exitCode != 0 || !strings.Contains(check.output, "older-skill [skillctl-track-v1, skillctl]: update available") {
 		t.Fatalf("unexpected historical check result (%d):\n%s", check.exitCode, check.output)
 	}
 }
@@ -260,7 +260,7 @@ func TestTrackedCopiedSkillFollowsExplicitBranchRef(t *testing.T) {
 	git(t, seed, "push")
 
 	result := runSkillctl(t, home, "check", "--path", installedRoot)
-	if result.exitCode != 0 || !strings.Contains(result.output, "branch-ref-skill: update available") {
+	if result.exitCode != 0 || !strings.Contains(result.output, "branch-ref-skill [skillctl-track-v1, skillctl]: update available") {
 		t.Fatalf("explicit branch ref did not follow the remote branch (%d):\n%s", result.exitCode, result.output)
 	}
 }
@@ -328,7 +328,7 @@ func TestSkillNameMayDifferFromInstallDirectory(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "SKILL.md"), "---\nname: vercel-react-best-practices\ndescription: React guidance\n---\n")
 
 	result := runSkillctl(t, home, "check", "--path", root)
-	if result.exitCode != 0 || !strings.Contains(result.output, "vercel-react-best-practices: unmanaged (source unknown)") {
+	if result.exitCode != 0 || !strings.Contains(result.output, "vercel-react-best-practices [local-authoring, user]: local/untracked (no update source)") {
 		t.Fatalf("unexpected renamed skill result (%d):\n%s", result.exitCode, result.output)
 	}
 }
@@ -345,7 +345,7 @@ func TestScannerFollowsDirectorySymlinkWhenPermitted(t *testing.T) {
 	}
 
 	result := runSkillctl(t, home, "check", "--path", root)
-	if result.exitCode != 0 || !strings.Contains(result.output, "linked-skill: unmanaged (source unknown)") {
+	if result.exitCode != 0 || !strings.Contains(result.output, "linked-skill [local-authoring, user]: local/untracked (no update source)") {
 		t.Fatalf("unexpected linked skill result (%d):\n%s", result.exitCode, result.output)
 	}
 }
