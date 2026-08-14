@@ -23,9 +23,9 @@ func TestVercelV3ClaimBindsConfiguredInstallRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	locks, _ := loadVercelLocks([]manifest{{Kind: "vercel-skills-lock-v3", Path: lockPath, InstallRoot: filepath.Join(dir, "skills")}})
-	entry, evidence, ok := locks.claim(skill{Name: "demo", Path: filepath.Join(dir, "skills", "demo")})
-	if !ok || entry.SkillPath != "skills/demo/SKILL.md" || len(evidence) != 1 {
-		t.Fatalf("expected precise v3 claim: %#v %#v %v", entry, evidence, ok)
+	claim, evidence, ok := locks.claim(skill{Name: "demo", Path: filepath.Join(dir, "skills", "demo")})
+	if !ok || claim.Name != "demo" || claim.Entry.SkillPath != "skills/demo/SKILL.md" || len(evidence) != 1 {
+		t.Fatalf("expected precise v3 claim: %#v %#v %v", claim, evidence, ok)
 	}
 	if _, _, ok := locks.claim(skill{Name: "demo", Path: filepath.Join(dir, "other", "demo")}); ok {
 		t.Fatal("lock claimed same-name instance outside configured install root")
@@ -174,6 +174,142 @@ func TestVercelGitLockCheckLatestUpdateAndDrift(t *testing.T) {
 	_, drift, err = checkVercelEntryTest(entry, install)
 	if err != nil || drift != "modified" {
 		t.Fatalf("drift check = %q, %v", drift, err)
+	}
+}
+
+func TestVercelProviderUpdateVerifiesLockAndInstalledContent(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", filepath.Join(dir, "home"))
+	t.Setenv("USERPROFILE", filepath.Join(dir, "home"))
+	t.Setenv("APPDATA", filepath.Join(dir, "app-data"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(dir, "local-app-data"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(dir, "cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+
+	remote := filepath.Join(dir, "remote.git")
+	seed := filepath.Join(dir, "seed")
+	gitTest(t, dir, "init", "--bare", remote)
+	gitTest(t, dir, "clone", remote, seed)
+	gitTest(t, seed, "config", "user.email", "test@example.invalid")
+	gitTest(t, seed, "config", "user.name", "test")
+	sourceSkill := filepath.Join(seed, "skills", "demo")
+	if err := os.MkdirAll(sourceSkill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceSkill, "SKILL.md"), []byte("---\nname: demo\ndescription: provider update fixture\n---\nold\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, seed, "add", ".")
+	gitTest(t, seed, "commit", "-m", "old")
+	gitTest(t, seed, "push", "-u", "origin", "HEAD")
+	oldTree := gitTest(t, seed, "rev-parse", "HEAD:skills/demo")
+
+	installRoot := filepath.Join(dir, "installed")
+	installed := filepath.Join(installRoot, "demo")
+	copyTestDirectory(t, sourceSkill, installed)
+	lockPath := filepath.Join(dir, ".skill-lock.json")
+	lock := vercelLock{Version: 3, Skills: map[string]vercelLockEntry{"demo": {
+		Source: "example/demo", SourceType: "github", SourceURL: remote,
+		SkillPath: "skills/demo/SKILL.md", SkillFolderHash: oldTree,
+	}}}
+	writeJSONTestFile(t, lockPath, lock)
+	configPath := filepath.Join(dir, "config.toml")
+	config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"universal\"\nscope = \"user\"\n[[manifests]]\nkind = \"vercel-skills-lock-v3\"\npath = %q\ninstall_root = %q\n", filepath.ToSlash(installRoot), filepath.ToSlash(lockPath), filepath.ToSlash(installRoot))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(sourceSkill, "SKILL.md"), []byte("---\nname: demo\ndescription: provider update fixture\n---\nnew\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, seed, "add", ".")
+	gitTest(t, seed, "commit", "-m", "new")
+	gitTest(t, seed, "push")
+	newTree := gitTest(t, seed, "rev-parse", "HEAD:skills/demo")
+
+	original := runVercelUpdater
+	defer func() { runVercelUpdater = original }()
+	requested := ""
+	runVercelUpdater = func(_ context.Context, request vercelUpdateRequest, _ io.Writer) (string, error) {
+		requested = request.Name
+		replacement, err := beginDirectoryReplacement(installed, sourceSkill)
+		if err != nil {
+			return "", err
+		}
+		if err := replacement.commit(); err != nil {
+			return "", err
+		}
+		lock.Skills["demo"] = vercelLockEntry{
+			Source: "example/demo", SourceType: "github", SourceURL: remote,
+			SkillPath: "skills/demo/SKILL.md", SkillFolderHash: newTree,
+		}
+		writeJSONTestFile(t, lockPath, lock)
+		return "updated demo", nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"update", "--timeout", "30s", "--config", configPath, "demo"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("update failed (%d): stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if requested != "demo" || !strings.Contains(stdout.String(), "updated") {
+		t.Fatalf("provider request=%q output=%q", requested, stdout.String())
+	}
+	content, err := os.ReadFile(filepath.Join(installed, "SKILL.md"))
+	if err != nil || !strings.Contains(string(content), "new") {
+		t.Fatalf("installed content was not updated: %v %q", err, content)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"check", "--timeout", "30s", "--config", configPath, "demo"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "up to date") {
+		t.Fatalf("post-update check failed (%d): stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	beforeSkill, err := os.ReadFile(filepath.Join(installed, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeLock, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceSkill, "SKILL.md"), []byte("---\nname: demo\ndescription: provider update fixture\n---\nprovider-partial-write\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTest(t, seed, "add", ".")
+	gitTest(t, seed, "commit", "-m", "provider partial write")
+	gitTest(t, seed, "push")
+	runVercelUpdater = func(_ context.Context, _ vercelUpdateRequest, _ io.Writer) (string, error) {
+		replacement, err := beginDirectoryReplacement(installed, sourceSkill)
+		if err != nil {
+			return "", err
+		}
+		return "provider exited successfully without updating its lock", replacement.commit()
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"update", "--timeout", "30s", "--config", configPath, "demo"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("partial provider update exit code = %d, want 1; stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	afterSkill, err := os.ReadFile(filepath.Join(installed, "SKILL.md"))
+	if err != nil || !bytes.Equal(afterSkill, beforeSkill) {
+		t.Fatalf("installed skill was not rolled back: %v before=%q after=%q", err, beforeSkill, afterSkill)
+	}
+	afterLock, err := os.ReadFile(lockPath)
+	if err != nil || !bytes.Equal(afterLock, beforeLock) {
+		t.Fatalf("provider lock was not rolled back: %v before=%q after=%q", err, beforeLock, afterLock)
+	}
+}
+
+func writeJSONTestFile(t *testing.T, path string, value any) {
+	t.Helper()
+	content, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

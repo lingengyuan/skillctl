@@ -61,7 +61,7 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 		if item.Broken {
 			continue
 		}
-		entry, _, providerClaim := locks.claim(item)
+		claim, _, providerClaim := locks.claim(item)
 		managedClaim, _ := managedOwner(item, managed)
 		tracked, trackedClaim := state.findSkill(item)
 		claims := 0
@@ -77,8 +77,8 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 		if claims != 1 {
 			continue
 		}
-		if providerClaim && entry.SourceURL != "" && entry.SkillPath != "" && entry.SkillFolderHash != "" && (entry.SourceType == "github" || entry.SourceType == "git") {
-			sourceRequests = append(sourceRequests, sourceRequest{Source: entry.SourceURL, Ref: entry.Ref})
+		if providerClaim && claim.Entry.SourceURL != "" && claim.Entry.SkillPath != "" && claim.Entry.SkillFolderHash != "" && (claim.Entry.SourceType == "github" || claim.Entry.SourceType == "git") {
+			sourceRequests = append(sourceRequests, sourceRequest{Source: claim.Entry.SourceURL, Ref: claim.Entry.Ref})
 		}
 		if trackedClaim {
 			sourceRequests = append(sourceRequests, sourceRequest{Source: tracked.Source, Ref: tracked.Ref})
@@ -115,7 +115,7 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 		if manifestBad {
 			continue
 		}
-		entry, evidence, found := locks.claim(item)
+		claim, evidence, found := locks.claim(item)
 		managedOwner, managedEvidence := managedOwner(item, managed)
 		tracked, isTracked := state.findSkill(item)
 		claims := 0
@@ -144,17 +144,30 @@ func inspect(ctx context.Context, action string, skills []skill, state *trackedS
 		}
 		if found {
 			r := reportFor(item, "vercel-skills-lock-v3", "provider", evidence, "unknown", "provider check unsupported", false, "report-only", "")
-			r.Revision = entry.SkillFolderHash
-			if entry.SourceType != "github" && entry.SourceType != "git" {
-				r.Status = "unsupported source type: " + entry.SourceType
+			r.Revision = claim.Entry.SkillFolderHash
+			if claim.Entry.SourceType != "github" && claim.Entry.SourceType != "git" {
+				r.Status = "unsupported source type: " + claim.Entry.SourceType
 			} else {
-				available, drift, err := checkVercelEntry(session, entry, item.Path)
+				r.Executor = "vercel-skills-cli"
+				available, drift, err := checkVercelEntry(session, claim.Entry, item.Path)
 				r.Drift = drift
 				r.UpdateAvailable = available
 				if err != nil {
 					r.Status = "provider check failed: " + oneLine(err.Error())
 					r.Error = oneLine(err.Error())
 					failed = true
+				} else if action == "update" && available && drift == "clean" {
+					updated, err := updateVercelProvider(ctx, session, item, claim, progress)
+					if err != nil {
+						r.Status = "provider update failed: " + oneLine(err.Error())
+						r.Error = oneLine(err.Error())
+						failed = true
+					} else {
+						r.Revision = updated.SkillFolderHash
+						r.Drift = "clean"
+						r.UpdateAvailable = false
+						r.Status = "updated"
+					}
 				} else {
 					r.Status = vercelStatus(action, available, r.Drift)
 				}
@@ -217,6 +230,211 @@ func vercelStatus(action string, available bool, drift string) string {
 		return "up to date, local files were modified"
 	}
 	return "up to date"
+}
+
+type vercelUpdateRequest struct {
+	Name         string
+	ManifestPath string
+}
+
+var runVercelUpdater = executeVercelUpdater
+
+func updateVercelProvider(ctx context.Context, session *sourceSession, item skill, claim vercelClaim, progress io.Writer) (vercelLockEntry, error) {
+	snapshot, err := createVercelUpdateSnapshot(item.Path, claim.ManifestPath)
+	if err != nil {
+		return vercelLockEntry{}, fmt.Errorf("create update backup: %w", err)
+	}
+	defer snapshot.cleanup()
+
+	started := time.Now()
+	fmt.Fprintf(progress, "Updating %s with Vercel Skills...\n", claim.Name)
+	_, err = runVercelUpdater(ctx, vercelUpdateRequest{Name: claim.Name, ManifestPath: claim.ManifestPath}, progress)
+	if err != nil {
+		fmt.Fprintf(progress, "Vercel Skills update failed (%s).\n", time.Since(started).Round(time.Millisecond))
+		return vercelLockEntry{}, snapshot.fail(item.Path, claim.ManifestPath, err)
+	}
+
+	updated, err := readVercelLockEntry(claim.ManifestPath, claim.Name)
+	if err == nil && !sameVercelSource(claim.Entry, updated) {
+		err = fmt.Errorf("provider changed the skill source")
+	}
+	if err == nil && updated.SkillFolderHash == claim.Entry.SkillFolderHash {
+		err = fmt.Errorf("provider did not advance the lock revision")
+	}
+	if err == nil {
+		name, valid := readSkill(filepath.Join(item.Path, "SKILL.md"), filepath.Base(item.Path))
+		if !valid || name != item.Name {
+			err = fmt.Errorf("updated directory does not contain skill %q", item.Name)
+		}
+	}
+	if err == nil {
+		var available bool
+		var drift string
+		available, drift, err = checkVercelEntry(session, updated, item.Path)
+		if err == nil && (available || drift != "clean") {
+			err = fmt.Errorf("post-update verification failed: update_available=%t drift=%s", available, drift)
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(progress, "Vercel Skills verification failed (%s).\n", time.Since(started).Round(time.Millisecond))
+		return vercelLockEntry{}, snapshot.fail(item.Path, claim.ManifestPath, err)
+	}
+	fmt.Fprintf(progress, "Vercel Skills update verified (%s).\n", time.Since(started).Round(time.Millisecond))
+	return updated, nil
+}
+
+func executeVercelUpdater(ctx context.Context, request vercelUpdateRequest, progress io.Writer) (string, error) {
+	activeLock, err := activeVercelLockPath()
+	if err != nil {
+		return "", err
+	}
+	if !samePath(activeLock, request.ManifestPath) {
+		return "", fmt.Errorf("configured manifest is not the active Vercel global lock: %s", request.ManifestPath)
+	}
+
+	command, err := exec.LookPath("skills")
+	args := []string{"update", request.Name, "--global", "--yes"}
+	if err != nil {
+		command, err = exec.LookPath("npx")
+		if err != nil {
+			return "", fmt.Errorf("Vercel Skills CLI was not found; install Node.js or skills")
+		}
+		args = append([]string{"--yes", "skills"}, args...)
+	}
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.WaitDelay = time.Second
+	var output bytes.Buffer
+	cmd.Stdout = io.MultiWriter(&output, progress)
+	cmd.Stderr = io.MultiWriter(&output, progress)
+	err = cmd.Run()
+	if ctx.Err() != nil {
+		return output.String(), fmt.Errorf("provider update timeout: %w", ctx.Err())
+	}
+	message := oneLine(output.String())
+	if err != nil {
+		if message == "" {
+			message = err.Error()
+		}
+		return output.String(), fmt.Errorf("Vercel Skills CLI: %s", message)
+	}
+	if strings.Contains(strings.ToLower(message), "failed to update") {
+		return output.String(), fmt.Errorf("Vercel Skills CLI reported an update failure")
+	}
+	return output.String(), nil
+}
+
+func activeVercelLockPath() (string, error) {
+	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
+		return filepath.Join(stateHome, "skills", ".skill-lock.json"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("find user home directory: %w", err)
+	}
+	return filepath.Join(home, ".agents", ".skill-lock.json"), nil
+}
+
+func readVercelLockEntry(path, name string) (vercelLockEntry, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return vercelLockEntry{}, fmt.Errorf("read provider lock: %w", err)
+	}
+	var lock vercelLock
+	if err := json.Unmarshal(content, &lock); err != nil {
+		return vercelLockEntry{}, fmt.Errorf("read provider lock: invalid JSON")
+	}
+	if lock.Version != 3 {
+		return vercelLockEntry{}, fmt.Errorf("read provider lock: unsupported schema version %d", lock.Version)
+	}
+	entry, ok := lock.Skills[name]
+	if !ok {
+		return vercelLockEntry{}, fmt.Errorf("provider removed lock entry %q", name)
+	}
+	return entry, nil
+}
+
+func sameVercelSource(left, right vercelLockEntry) bool {
+	return left.Source == right.Source &&
+		left.SourceType == right.SourceType &&
+		left.SourceURL == right.SourceURL &&
+		left.Ref == right.Ref &&
+		left.SkillPath == right.SkillPath
+}
+
+type vercelUpdateSnapshot struct {
+	directory string
+	lock      []byte
+	lockMode  os.FileMode
+}
+
+func createVercelUpdateSnapshot(installed, manifestPath string) (*vercelUpdateSnapshot, error) {
+	lock, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	directory, err := os.MkdirTemp(filepath.Dir(installed), ".skillctl-provider-snapshot-")
+	if err != nil {
+		return nil, err
+	}
+	if err := copyDirectory(installed, directory); err != nil {
+		_ = os.RemoveAll(directory)
+		return nil, err
+	}
+	return &vercelUpdateSnapshot{directory: directory, lock: lock, lockMode: info.Mode().Perm()}, nil
+}
+
+func (s *vercelUpdateSnapshot) cleanup() {
+	_ = os.RemoveAll(s.directory)
+}
+
+func (s *vercelUpdateSnapshot) fail(installed, manifestPath string, cause error) error {
+	if err := s.restore(installed, manifestPath); err != nil {
+		return fmt.Errorf("%w; rollback failed: %v", cause, err)
+	}
+	return cause
+}
+
+func (s *vercelUpdateSnapshot) restore(installed, manifestPath string) error {
+	replacement, err := beginDirectoryReplacement(installed, s.directory)
+	if err != nil {
+		return fmt.Errorf("restore skill: %w", err)
+	}
+	if err := writeFileAtomically(manifestPath, s.lock, s.lockMode); err != nil {
+		if rollbackErr := replacement.rollback(); rollbackErr != nil {
+			return fmt.Errorf("restore lock: %w; restore provider result: %v", err, rollbackErr)
+		}
+		return fmt.Errorf("restore lock: %w", err)
+	}
+	if err := replacement.commit(); err != nil {
+		return fmt.Errorf("remove provider result backup: %w", err)
+	}
+	return nil
+}
+
+func writeFileAtomically(path string, content []byte, mode os.FileMode) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), ".skillctl-lock-")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(mode); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err := temp.Write(content); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
 }
 
 // sourceSession is command-scoped so provider and explicit-track checks sync
@@ -749,6 +967,12 @@ type vercelManifest struct {
 	lock              vercelLock
 }
 
+type vercelClaim struct {
+	Name         string
+	ManifestPath string
+	Entry        vercelLockEntry
+}
+
 func loadVercelLocks(manifests []manifest) (vercelLocks, map[string]string) {
 	var result vercelLocks
 	errors := map[string]string{}
@@ -787,7 +1011,7 @@ func manifestInstallRoot(manifests []manifest, path string) string {
 	return ""
 }
 
-func (locks vercelLocks) claim(item skill) (vercelLockEntry, []string, bool) {
+func (locks vercelLocks) claim(item skill) (vercelClaim, []string, bool) {
 	for _, lock := range locks {
 		for key, entry := range lock.lock.Skills {
 			install := filepath.Join(lock.installRoot, key)
@@ -796,9 +1020,9 @@ func (locks vercelLocks) claim(item skill) (vercelLockEntry, []string, bool) {
 				matches = matches || samePath(alias, install)
 			}
 			if matches {
-				return entry, []string{lock.path}, true
+				return vercelClaim{Name: key, ManifestPath: lock.path, Entry: entry}, []string{lock.path}, true
 			}
 		}
 	}
-	return vercelLockEntry{}, nil, false
+	return vercelClaim{}, nil, false
 }
