@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,7 +13,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // report is deliberately a value object: rendering does not need to know how
@@ -48,9 +52,52 @@ type vercelLockEntry struct {
 	SkillFolderHash string `json:"skillFolderHash"`
 }
 
-func inspect(action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, stdout, stderr io.Writer) ([]report, bool) {
+func inspect(ctx context.Context, action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, stdout, progress io.Writer) ([]report, bool) {
 	locks, lockErrors := loadVercelLocks(manifests)
-	session := sourceSession{caches: map[string]string{}}
+	ghClaims := make(map[string]ghSkillClaimResult, len(skills))
+	for _, item := range skills {
+		if !item.Broken {
+			ghClaims[item.Path] = readGHSkillClaim(item)
+		}
+	}
+	session := newSourceSession(ctx, progress)
+	defer session.close()
+	var sourceRequests []sourceRequest
+	for _, item := range skills {
+		if item.Broken {
+			continue
+		}
+		claim, _, providerClaim := locks.claim(item)
+		ghClaim := ghClaims[item.Path]
+		managedClaim, _ := managedOwner(item, managed)
+		tracked, trackedClaim := state.findSkill(item)
+		claims := 0
+		if providerClaim {
+			claims++
+		}
+		if managedClaim != "" {
+			claims++
+		}
+		if trackedClaim {
+			claims++
+		}
+		if ghClaim.Found {
+			claims++
+		}
+		if claims != 1 {
+			continue
+		}
+		if providerClaim && claim.Entry.SourceURL != "" && claim.Entry.SkillPath != "" && claim.Entry.SkillFolderHash != "" && (claim.Entry.SourceType == "github" || claim.Entry.SourceType == "git") {
+			sourceRequests = append(sourceRequests, sourceRequest{Source: claim.Entry.SourceURL, Ref: claim.Entry.Ref})
+		}
+		if trackedClaim {
+			sourceRequests = append(sourceRequests, sourceRequest{Source: tracked.Source, Ref: tracked.Ref})
+		}
+		if ghClaim.Found && ghClaim.Err == nil && ghClaim.Claim.Repository != "" && !ghClaim.Claim.Pinned {
+			sourceRequests = append(sourceRequests, sourceRequest{Source: ghRepositoryURL(ghClaim.Claim.Repository), Ref: ghClaim.Claim.Ref})
+		}
+	}
+	session.prefetch(sourceRequests)
 	reports := make([]report, 0, len(skills))
 	remaining := make([]skill, 0, len(skills))
 	failed := false
@@ -81,7 +128,8 @@ func inspect(action string, skills []skill, state *trackedState, manifests []man
 		if manifestBad {
 			continue
 		}
-		entry, evidence, found := locks.claim(item)
+		claim, evidence, found := locks.claim(item)
+		ghClaim := ghClaims[item.Path]
 		managedOwner, managedEvidence := managedOwner(item, managed)
 		tracked, isTracked := state.findSkill(item)
 		claims := 0
@@ -94,11 +142,17 @@ func inspect(action string, skills []skill, state *trackedState, manifests []man
 		if isTracked {
 			claims++
 		}
+		if ghClaim.Found {
+			claims++
+		}
 		if claims > 1 {
 			allEvidence := append([]string{}, managedEvidence...)
 			allEvidence = append(allEvidence, evidence...)
 			if isTracked {
 				allEvidence = append(allEvidence, tracked.Source)
+			}
+			if ghClaim.Found {
+				allEvidence = append(allEvidence, filepath.Join(item.Path, "SKILL.md"))
 			}
 			reports = append(reports, reportFor(item, "ambiguous", "unknown", allEvidence, "unknown", "ambiguous provenance", false, "report-only", "authoritative claims conflict"))
 			failed = true
@@ -108,19 +162,73 @@ func inspect(action string, skills []skill, state *trackedState, manifests []man
 			reports = append(reports, reportFor(item, "codex-host", "host", managedEvidence, "none", "managed by "+managedOwner, false, "report-only", ""))
 			continue
 		}
+		if ghClaim.Found {
+			evidence := []string{filepath.Join(item.Path, "SKILL.md")}
+			r := reportFor(item, "gh-skill", "provider", evidence, "unknown", "GitHub skill metadata invalid", false, "report-only", "")
+			r.Revision = ghClaim.Claim.TreeSHA
+			if ghClaim.Err != nil {
+				r.Error = oneLine(ghClaim.Err.Error())
+				r.Status += ": " + r.Error
+				failed = true
+			} else if ghClaim.Claim.LocalPath != "" {
+				r.Status = "managed from local path"
+			} else if ghClaim.Claim.Pinned {
+				r.Status = "pinned"
+				r.Executor = "gh-skill-cli"
+			} else {
+				r.Executor = "gh-skill-cli"
+				available, err := checkGHSkill(session, ghClaim.Claim)
+				r.UpdateAvailable = available
+				if err != nil {
+					r.Status = "GitHub skill check failed: " + oneLine(err.Error())
+					r.Error = oneLine(err.Error())
+					failed = true
+				} else if action == "update" && available {
+					updated, err := updateGHSkillProvider(ctx, session, item, ghClaim.Claim, progress)
+					if err != nil {
+						r.Status = "GitHub skill update failed: " + oneLine(err.Error())
+						r.Error = oneLine(err.Error())
+						failed = true
+					} else {
+						r.Revision = updated.TreeSHA
+						r.UpdateAvailable = false
+						r.Status = "updated"
+					}
+				} else if available {
+					r.Status = "update available"
+				} else {
+					r.Status = "up to date"
+				}
+			}
+			reports = append(reports, r)
+			continue
+		}
 		if found {
 			r := reportFor(item, "vercel-skills-lock-v3", "provider", evidence, "unknown", "provider check unsupported", false, "report-only", "")
-			r.Revision = entry.SkillFolderHash
-			if entry.SourceType != "github" && entry.SourceType != "git" {
-				r.Status = "unsupported source type: " + entry.SourceType
+			r.Revision = claim.Entry.SkillFolderHash
+			if claim.Entry.SourceType != "github" && claim.Entry.SourceType != "git" {
+				r.Status = "unsupported source type: " + claim.Entry.SourceType
 			} else {
-				available, drift, err := checkVercelEntry(&session, entry, item.Path)
+				r.Executor = "vercel-skills-cli"
+				available, drift, err := checkVercelEntry(session, claim.Entry, item.Path)
 				r.Drift = drift
 				r.UpdateAvailable = available
 				if err != nil {
 					r.Status = "provider check failed: " + oneLine(err.Error())
 					r.Error = oneLine(err.Error())
 					failed = true
+				} else if action == "update" && available && drift == "clean" {
+					updated, err := updateVercelProvider(ctx, session, item, claim, progress)
+					if err != nil {
+						r.Status = "provider update failed: " + oneLine(err.Error())
+						r.Error = oneLine(err.Error())
+						failed = true
+					} else {
+						r.Revision = updated.SkillFolderHash
+						r.Drift = "clean"
+						r.UpdateAvailable = false
+						r.Status = "updated"
+					}
 				} else {
 					r.Status = vercelStatus(action, available, r.Drift)
 				}
@@ -133,7 +241,7 @@ func inspect(action string, skills []skill, state *trackedState, manifests []man
 
 	if len(remaining) > 0 {
 		sink := newReportSink(remaining, state)
-		failed = processGit(action, remaining, state, &session, sink, sink) || failed
+		failed = processGit(action, remaining, state, session, sink, sink) || failed
 		reports = append(reports, sink.reports...)
 	}
 	sort.Slice(reports, func(i, j int) bool {
@@ -142,7 +250,25 @@ func inspect(action string, skills []skill, state *trackedState, manifests []man
 	for _, r := range reports {
 		printReport(stdout, r, duplicateName(reports, r.Identity))
 	}
+	printTrackRepairHint(stdout, reports)
 	return reports, failed
+}
+
+func printTrackRepairHint(w io.Writer, reports []report) {
+	count := 0
+	name := ""
+	for _, r := range reports {
+		if r.Provider == "local-authoring" && r.Status == "local/untracked (no update source)" {
+			count++
+			name = r.Identity
+		}
+	}
+	if count == 1 {
+		fmt.Fprintf(w, "Hint: register its update source: skillctl track --source SOURCE_URL %s\n", name)
+	}
+	if count > 1 {
+		fmt.Fprintf(w, "Hint: %d skills have no update source; register one with: skillctl track --source SOURCE_URL SKILL_NAME\n", count)
+	}
 }
 
 func vercelStatus(action string, available bool, drift string) string {
@@ -167,23 +293,487 @@ func vercelStatus(action string, available bool, drift string) string {
 	return "up to date"
 }
 
-// sourceSession is command-scoped so provider and explicit-track checks sync
-// each normalized source/ref pair only once.
-type sourceSession struct{ caches map[string]string }
+type vercelUpdateRequest struct {
+	Name         string
+	ManifestPath string
+}
 
-var syncSourceForSession = syncSource
+var runVercelUpdater = executeVercelUpdater
 
-func (s *sourceSession) source(source, ref string) (string, error) {
-	key := normalizeSource(source) + "\x00" + ref
-	if cache, ok := s.caches[key]; ok {
-		return cache, nil
+func updateVercelProvider(ctx context.Context, session *sourceSession, item skill, claim vercelClaim, progress io.Writer) (vercelLockEntry, error) {
+	snapshot, err := createVercelUpdateSnapshot(item.Path, claim.ManifestPath)
+	if err != nil {
+		return vercelLockEntry{}, fmt.Errorf("create update backup: %w", err)
 	}
-	cache, err := syncSourceForSession(source, ref)
+	defer snapshot.cleanup()
+
+	started := time.Now()
+	fmt.Fprintf(progress, "Updating %s with Vercel Skills...\n", claim.Name)
+	_, err = runVercelUpdater(ctx, vercelUpdateRequest{Name: claim.Name, ManifestPath: claim.ManifestPath}, progress)
+	if err != nil {
+		fmt.Fprintf(progress, "Vercel Skills update failed (%s).\n", time.Since(started).Round(time.Millisecond))
+		return vercelLockEntry{}, snapshot.fail(item.Path, claim.ManifestPath, err)
+	}
+
+	updated, err := readVercelLockEntry(claim.ManifestPath, claim.Name)
+	if err == nil && !sameVercelSource(claim.Entry, updated) {
+		err = fmt.Errorf("provider changed the skill source")
+	}
+	if err == nil && updated.SkillFolderHash == claim.Entry.SkillFolderHash {
+		err = fmt.Errorf("provider did not advance the lock revision")
+	}
+	if err == nil {
+		name, valid := readSkill(filepath.Join(item.Path, "SKILL.md"), filepath.Base(item.Path))
+		if !valid || name != item.Name {
+			err = fmt.Errorf("updated directory does not contain skill %q", item.Name)
+		}
+	}
+	if err == nil {
+		var available bool
+		var drift string
+		available, drift, err = checkVercelEntry(session, updated, item.Path)
+		if err == nil && (available || drift != "clean") {
+			err = fmt.Errorf("post-update verification failed: update_available=%t drift=%s", available, drift)
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(progress, "Vercel Skills verification failed (%s).\n", time.Since(started).Round(time.Millisecond))
+		return vercelLockEntry{}, snapshot.fail(item.Path, claim.ManifestPath, err)
+	}
+	fmt.Fprintf(progress, "Vercel Skills update verified (%s).\n", time.Since(started).Round(time.Millisecond))
+	return updated, nil
+}
+
+func executeVercelUpdater(ctx context.Context, request vercelUpdateRequest, progress io.Writer) (string, error) {
+	activeLock, err := activeVercelLockPath()
 	if err != nil {
 		return "", err
 	}
+	if !samePath(activeLock, request.ManifestPath) {
+		return "", fmt.Errorf("configured manifest is not the active Vercel global lock: %s", request.ManifestPath)
+	}
+
+	command, err := exec.LookPath("skills")
+	args := []string{"update", request.Name, "--global", "--yes"}
+	if err != nil {
+		command, err = exec.LookPath("npx")
+		if err != nil {
+			return "", fmt.Errorf("Vercel Skills CLI was not found; install Node.js or skills")
+		}
+		args = append([]string{"--yes", "skills"}, args...)
+	}
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.WaitDelay = time.Second
+	var output bytes.Buffer
+	cmd.Stdout = io.MultiWriter(&output, progress)
+	cmd.Stderr = io.MultiWriter(&output, progress)
+	err = cmd.Run()
+	if ctx.Err() != nil {
+		return output.String(), fmt.Errorf("provider update timeout: %w", ctx.Err())
+	}
+	message := oneLine(output.String())
+	if err != nil {
+		if message == "" {
+			message = err.Error()
+		}
+		return output.String(), fmt.Errorf("Vercel Skills CLI: %s", message)
+	}
+	if strings.Contains(strings.ToLower(message), "failed to update") {
+		return output.String(), fmt.Errorf("Vercel Skills CLI reported an update failure")
+	}
+	return output.String(), nil
+}
+
+func activeVercelLockPath() (string, error) {
+	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
+		return filepath.Join(stateHome, "skills", ".skill-lock.json"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("find user home directory: %w", err)
+	}
+	return filepath.Join(home, ".agents", ".skill-lock.json"), nil
+}
+
+func readVercelLockEntry(path, name string) (vercelLockEntry, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return vercelLockEntry{}, fmt.Errorf("read provider lock: %w", err)
+	}
+	var lock vercelLock
+	if err := json.Unmarshal(content, &lock); err != nil {
+		return vercelLockEntry{}, fmt.Errorf("read provider lock: invalid JSON")
+	}
+	if lock.Version != 3 {
+		return vercelLockEntry{}, fmt.Errorf("read provider lock: unsupported schema version %d", lock.Version)
+	}
+	entry, ok := lock.Skills[name]
+	if !ok {
+		return vercelLockEntry{}, fmt.Errorf("provider removed lock entry %q", name)
+	}
+	return entry, nil
+}
+
+func sameVercelSource(left, right vercelLockEntry) bool {
+	return left.Source == right.Source &&
+		left.SourceType == right.SourceType &&
+		left.SourceURL == right.SourceURL &&
+		left.Ref == right.Ref &&
+		left.SkillPath == right.SkillPath
+}
+
+type vercelUpdateSnapshot struct {
+	directory string
+	lock      []byte
+	lockMode  os.FileMode
+}
+
+func createVercelUpdateSnapshot(installed, manifestPath string) (*vercelUpdateSnapshot, error) {
+	lock, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	directory, err := os.MkdirTemp(filepath.Dir(installed), ".skillctl-provider-snapshot-")
+	if err != nil {
+		return nil, err
+	}
+	if err := copyDirectory(installed, directory); err != nil {
+		_ = os.RemoveAll(directory)
+		return nil, err
+	}
+	return &vercelUpdateSnapshot{directory: directory, lock: lock, lockMode: info.Mode().Perm()}, nil
+}
+
+func (s *vercelUpdateSnapshot) cleanup() {
+	_ = os.RemoveAll(s.directory)
+}
+
+func (s *vercelUpdateSnapshot) fail(installed, manifestPath string, cause error) error {
+	if err := s.restore(installed, manifestPath); err != nil {
+		return fmt.Errorf("%w; rollback failed: %v", cause, err)
+	}
+	return cause
+}
+
+func (s *vercelUpdateSnapshot) restore(installed, manifestPath string) error {
+	if _, err := os.Lstat(installed); os.IsNotExist(err) {
+		stage, err := os.MkdirTemp(filepath.Dir(installed), ".skillctl-restore-")
+		if err != nil {
+			return fmt.Errorf("restore skill: %w", err)
+		}
+		defer os.RemoveAll(stage)
+		if err := copyDirectory(s.directory, stage); err != nil {
+			return fmt.Errorf("restore skill: %w", err)
+		}
+		if err := os.Rename(stage, installed); err != nil {
+			return fmt.Errorf("restore skill: %w", err)
+		}
+		if err := writeFileAtomically(manifestPath, s.lock, s.lockMode); err != nil {
+			if removeErr := os.RemoveAll(installed); removeErr != nil {
+				return fmt.Errorf("restore lock: %w; restore provider result: %v", err, removeErr)
+			}
+			return fmt.Errorf("restore lock: %w", err)
+		}
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("restore skill: %w", err)
+	}
+
+	replacement, err := beginDirectoryReplacement(installed, s.directory)
+	if err != nil {
+		return fmt.Errorf("restore skill: %w", err)
+	}
+	if err := writeFileAtomically(manifestPath, s.lock, s.lockMode); err != nil {
+		if rollbackErr := replacement.rollback(); rollbackErr != nil {
+			return fmt.Errorf("restore lock: %w; restore provider result: %v", err, rollbackErr)
+		}
+		return fmt.Errorf("restore lock: %w", err)
+	}
+	if err := replacement.commit(); err != nil {
+		return fmt.Errorf("remove provider result backup: %w", err)
+	}
+	return nil
+}
+
+func writeFileAtomically(path string, content []byte, mode os.FileMode) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), ".skillctl-lock-")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(mode); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err := temp.Write(content); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
+}
+
+// sourceSession is command-scoped so provider and explicit-track checks sync
+// each normalized source/ref pair once and share one Git object process per
+// cached repository.
+type sourceSession struct {
+	ctx          context.Context
+	caches       map[string]string
+	sourceErrors map[string]error
+	objects      map[string]*gitObjectReader
+	treeHashes   map[string]string
+	progress     io.Writer
+	sourceCount  int
+}
+
+func newSourceSession(ctx context.Context, progress io.Writer) *sourceSession {
+	return &sourceSession{
+		ctx:          ctx,
+		caches:       map[string]string{},
+		sourceErrors: map[string]error{},
+		objects:      map[string]*gitObjectReader{},
+		treeHashes:   map[string]string{},
+		progress:     progress,
+	}
+}
+
+var syncSourceForSession = syncSource
+
+const maxConcurrentSourceChecks = 4
+
+type sourceRequest struct {
+	Source string
+	Ref    string
+}
+
+type pendingSource struct {
+	sourceRequest
+	key     string
+	number  int
+	started time.Time
+}
+
+type sourceResult struct {
+	pendingSource
+	cache string
+	err   error
+}
+
+func (s *sourceSession) prefetch(requests []sourceRequest) {
+	s.ensureSourceMaps()
+	seen := map[string]bool{}
+	var pending []pendingSource
+	for _, request := range requests {
+		key := sourceKey(request.Source, request.Ref)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if _, ok := s.caches[key]; ok {
+			continue
+		}
+		if _, ok := s.sourceErrors[key]; ok {
+			continue
+		}
+		s.sourceCount++
+		item := pendingSource{sourceRequest: request, key: key, number: s.sourceCount, started: time.Now()}
+		pending = append(pending, item)
+		s.progressf("Checking remote source %d...\n", item.number)
+	}
+	if len(pending) == 0 {
+		return
+	}
+	workerCount := len(pending)
+	if workerCount > maxConcurrentSourceChecks {
+		workerCount = maxConcurrentSourceChecks
+	}
+	jobs := make(chan pendingSource)
+	results := make(chan sourceResult, len(pending))
+	for i := 0; i < workerCount; i++ {
+		go func() {
+			for item := range jobs {
+				cache, err := syncSourceForSession(s.ctx, item.Source, item.Ref)
+				results <- sourceResult{pendingSource: item, cache: cache, err: err}
+			}
+		}()
+	}
+	for _, item := range pending {
+		jobs <- item
+	}
+	close(jobs)
+	for range pending {
+		result := <-results
+		if result.err != nil && s.ctx.Err() != nil {
+			result.err = fmt.Errorf("network timeout: %w", s.ctx.Err())
+		}
+		elapsed := time.Since(result.started).Round(time.Millisecond)
+		if result.err != nil {
+			s.sourceErrors[result.key] = result.err
+			s.progressf("Remote source %d failed (%s).\n", result.number, elapsed)
+			continue
+		}
+		s.caches[result.key] = result.cache
+		s.progressf("Remote source %d ready (%s).\n", result.number, elapsed)
+	}
+}
+
+func (s *sourceSession) source(source, ref string) (string, error) {
+	s.ensureSourceMaps()
+	key := sourceKey(source, ref)
+	if cache, ok := s.caches[key]; ok {
+		return cache, nil
+	}
+	if err, ok := s.sourceErrors[key]; ok {
+		return "", err
+	}
+	s.sourceCount++
+	number := s.sourceCount
+	started := time.Now()
+	s.progressf("Checking remote source %d...\n", number)
+	cache, err := syncSourceForSession(s.ctx, source, ref)
+	if err != nil {
+		if s.ctx.Err() != nil {
+			err = fmt.Errorf("network timeout: %w", s.ctx.Err())
+		}
+		s.sourceErrors[key] = err
+		s.progressf("Remote source %d failed (%s).\n", number, time.Since(started).Round(time.Millisecond))
+		return "", err
+	}
+	s.progressf("Remote source %d ready (%s).\n", number, time.Since(started).Round(time.Millisecond))
 	s.caches[key] = cache
 	return cache, nil
+}
+
+func (s *sourceSession) ensureSourceMaps() {
+	if s.caches == nil {
+		s.caches = map[string]string{}
+	}
+	if s.sourceErrors == nil {
+		s.sourceErrors = map[string]error{}
+	}
+}
+
+func sourceKey(source, ref string) string {
+	return normalizeSource(source) + "\x00" + ref
+}
+
+func (s *sourceSession) progressf(format string, args ...any) {
+	if s.progress != nil {
+		fmt.Fprintf(s.progress, format, args...)
+	}
+}
+
+func (s *sourceSession) gitObject(cache, spec string) (gitObject, error) {
+	if s.objects == nil {
+		s.objects = map[string]*gitObjectReader{}
+	}
+	reader := s.objects[cache]
+	if reader == nil {
+		var err error
+		reader, err = newGitObjectReader(cache)
+		if err != nil {
+			return gitObject{}, err
+		}
+		s.objects[cache] = reader
+	}
+	return reader.read(spec)
+}
+
+func (s *sourceSession) close() {
+	for _, reader := range s.objects {
+		_ = reader.close()
+	}
+}
+
+type gitObject struct {
+	Hash string
+	Type string
+	Data []byte
+}
+
+type gitObjectReader struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	stdout *bufio.Reader
+	stderr bytes.Buffer
+}
+
+func newGitObjectReader(cache string) (*gitObjectReader, error) {
+	reader := &gitObjectReader{}
+	reader.cmd = exec.Command("git", "-C", cache, "cat-file", "--batch")
+	stdin, err := reader.cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("open git object input: %w", err)
+	}
+	stdout, err := reader.cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, fmt.Errorf("open git object output: %w", err)
+	}
+	reader.stdin = stdin
+	reader.stdout = bufio.NewReader(stdout)
+	reader.cmd.Stderr = &reader.stderr
+	if err := reader.cmd.Start(); err != nil {
+		_ = stdin.Close()
+		return nil, fmt.Errorf("start git cat-file --batch: %w", err)
+	}
+	return reader, nil
+}
+
+func (r *gitObjectReader) read(spec string) (gitObject, error) {
+	if spec == "" || strings.ContainsAny(spec, "\r\n\x00") {
+		return gitObject{}, fmt.Errorf("invalid git object spec")
+	}
+	if _, err := fmt.Fprintln(r.stdin, spec); err != nil {
+		return gitObject{}, fmt.Errorf("request git object: %w", err)
+	}
+	header, err := r.stdout.ReadString('\n')
+	if err != nil {
+		return gitObject{}, fmt.Errorf("read git object header: %w", err)
+	}
+	fields := strings.Fields(header)
+	if len(fields) == 2 && fields[1] == "missing" {
+		return gitObject{}, fmt.Errorf("git object %q was not found", spec)
+	}
+	if len(fields) != 3 {
+		return gitObject{}, fmt.Errorf("invalid git object header %q", strings.TrimSpace(header))
+	}
+	size, err := strconv.ParseInt(fields[2], 10, 64)
+	if err != nil || size < 0 {
+		return gitObject{}, fmt.Errorf("invalid git object size %q", fields[2])
+	}
+	data := make([]byte, size)
+	if _, err := io.ReadFull(r.stdout, data); err != nil {
+		return gitObject{}, fmt.Errorf("read git object contents: %w", err)
+	}
+	terminator, err := r.stdout.ReadByte()
+	if err != nil || terminator != '\n' {
+		return gitObject{}, fmt.Errorf("invalid git object terminator")
+	}
+	return gitObject{Hash: fields[0], Type: fields[1], Data: data}, nil
+}
+
+func (r *gitObjectReader) close() error {
+	if r.stdin != nil {
+		_ = r.stdin.Close()
+		r.stdin = nil
+	}
+	if err := r.cmd.Wait(); err != nil {
+		message := oneLine(r.stderr.String())
+		if message == "" {
+			message = err.Error()
+		}
+		return fmt.Errorf("git cat-file --batch: %s", message)
+	}
+	return nil
 }
 
 func checkVercelEntry(session *sourceSession, entry vercelLockEntry, installed string) (bool, string, error) {
@@ -217,19 +807,22 @@ func checkVercelEntry(session *sourceSession, entry vercelLockEntry, installed s
 		}
 		return current != entry.SkillFolderHash, drift, nil
 	}
-	current, err := gitOutput(cache, "rev-parse", "HEAD:"+folder)
+	current, err := session.gitObject(cache, "HEAD:"+folder)
 	if err != nil {
 		return false, "unknown", fmt.Errorf("resolve upstream skill folder: %w", err)
 	}
-	drift, err := vercelLocalDrift(cache, entry.SkillFolderHash, installed)
+	if current.Type != "tree" {
+		return false, "unknown", fmt.Errorf("upstream skill path is not a directory")
+	}
+	drift, err := vercelLocalDrift(session, cache, entry.SkillFolderHash, installed)
 	if err != nil {
 		return false, "unknown", err
 	}
-	return current != entry.SkillFolderHash, drift, nil
+	return !strings.EqualFold(current.Hash, entry.SkillFolderHash), drift, nil
 }
 
-func vercelLocalDrift(cache, expectedTree, installed string) (string, error) {
-	expected, err := hashGitTree(cache, expectedTree)
+func vercelLocalDrift(session *sourceSession, cache, expectedTree, installed string) (string, error) {
+	expected, err := hashGitTree(session, cache, expectedTree)
 	if err != nil {
 		return "unknown", err
 	}
@@ -243,46 +836,106 @@ func vercelLocalDrift(cache, expectedTree, installed string) (string, error) {
 	return "modified", nil
 }
 
-func hashGitTree(cache, tree string) (string, error) {
-	list, err := gitOutput(cache, "ls-tree", "-r", "--full-tree", tree)
+func hashGitTree(session *sourceSession, cache, tree string) (string, error) {
+	if session.treeHashes == nil {
+		session.treeHashes = map[string]string{}
+	}
+	key := cache + "\x00" + tree
+	if value, ok := session.treeHashes[key]; ok {
+		return value, nil
+	}
+	files, err := collectGitTreeFiles(session, cache, tree, "")
 	if err != nil {
 		return "", err
 	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	hash := sha256.New()
-	for _, line := range strings.Split(list, "\n") {
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) != 2 {
-			return "", fmt.Errorf("invalid git tree entry")
-		}
-		fields := strings.Fields(parts[0])
-		if len(fields) != 3 {
-			return "", fmt.Errorf("invalid git tree entry")
-		}
-		content, err := gitRaw(cache, "cat-file", "-p", fields[2])
+	for _, file := range files {
+		object, err := session.gitObject(cache, file.Object)
 		if err != nil {
 			return "", err
 		}
-		data := content
-		if fields[0] == "120000" {
-			data = append([]byte("symlink\x00"), content...)
+		data := object.Data
+		if file.Mode == "120000" {
+			data = append([]byte("symlink\x00"), object.Data...)
 		} else {
-			data = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
+			data = bytes.ReplaceAll(object.Data, []byte("\r\n"), []byte("\n"))
 		}
-		fmt.Fprintf(hash, "%s\x00%d\x00", parts[1], len(data))
+		fmt.Fprintf(hash, "%s\x00%d\x00", file.Path, len(data))
 		if _, err := hash.Write(data); err != nil {
 			return "", err
 		}
 	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	value := hex.EncodeToString(hash.Sum(nil))
+	session.treeHashes[key] = value
+	return value, nil
 }
 
-func gitRaw(dir string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	output, err := cmd.Output()
+type gitTreeFile struct {
+	Path   string
+	Mode   string
+	Object string
+}
+
+func collectGitTreeFiles(session *sourceSession, cache, tree, prefix string) ([]gitTreeFile, error) {
+	object, err := session.gitObject(cache, tree)
 	if err != nil {
-		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		return nil, err
 	}
-	return output, nil
+	if object.Type != "tree" {
+		return nil, fmt.Errorf("git object %q is not a tree", tree)
+	}
+	entries, err := parseGitTree(object)
+	if err != nil {
+		return nil, err
+	}
+	var files []gitTreeFile
+	for _, entry := range entries {
+		path := entry.Path
+		if prefix != "" {
+			path = prefix + "/" + path
+		}
+		if entry.Mode == "40000" || entry.Mode == "040000" {
+			children, err := collectGitTreeFiles(session, cache, entry.Object, path)
+			if err != nil {
+				return nil, err
+			}
+			files = append(files, children...)
+			continue
+		}
+		files = append(files, gitTreeFile{Path: path, Mode: entry.Mode, Object: entry.Object})
+	}
+	return files, nil
+}
+
+func parseGitTree(object gitObject) ([]gitTreeFile, error) {
+	objectBytes := len(object.Hash) / 2
+	if objectBytes == 0 {
+		return nil, fmt.Errorf("invalid git tree hash")
+	}
+	data := object.Data
+	var entries []gitTreeFile
+	for len(data) > 0 {
+		space := bytes.IndexByte(data, ' ')
+		if space <= 0 {
+			return nil, fmt.Errorf("invalid git tree mode")
+		}
+		mode := string(data[:space])
+		data = data[space+1:]
+		nul := bytes.IndexByte(data, 0)
+		if nul < 0 {
+			return nil, fmt.Errorf("invalid git tree path")
+		}
+		path := string(data[:nul])
+		data = data[nul+1:]
+		if len(data) < objectBytes {
+			return nil, fmt.Errorf("invalid git tree object id")
+		}
+		objectID := hex.EncodeToString(data[:objectBytes])
+		data = data[objectBytes:]
+		entries = append(entries, gitTreeFile{Path: path, Mode: mode, Object: objectID})
+	}
+	return entries, nil
 }
 
 func reportFor(item skill, provider, owner string, evidence []string, drift, status string, available bool, executor, err string) report {
@@ -398,6 +1051,12 @@ type vercelManifest struct {
 	lock              vercelLock
 }
 
+type vercelClaim struct {
+	Name         string
+	ManifestPath string
+	Entry        vercelLockEntry
+}
+
 func loadVercelLocks(manifests []manifest) (vercelLocks, map[string]string) {
 	var result vercelLocks
 	errors := map[string]string{}
@@ -436,7 +1095,7 @@ func manifestInstallRoot(manifests []manifest, path string) string {
 	return ""
 }
 
-func (locks vercelLocks) claim(item skill) (vercelLockEntry, []string, bool) {
+func (locks vercelLocks) claim(item skill) (vercelClaim, []string, bool) {
 	for _, lock := range locks {
 		for key, entry := range lock.lock.Skills {
 			install := filepath.Join(lock.installRoot, key)
@@ -445,9 +1104,9 @@ func (locks vercelLocks) claim(item skill) (vercelLockEntry, []string, bool) {
 				matches = matches || samePath(alias, install)
 			}
 			if matches {
-				return entry, []string{lock.path}, true
+				return vercelClaim{Name: key, ManifestPath: lock.path, Entry: entry}, []string{lock.path}, true
 			}
 		}
 	}
-	return vercelLockEntry{}, nil, false
+	return vercelClaim{}, nil, false
 }
