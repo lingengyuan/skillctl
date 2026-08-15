@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +20,7 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 	root := filepath.Join(home, "skills")
 	skillDir := filepath.Join(root, "nested", "install-name")
 	writeTestSkill(t, skillDir, "declared-name", "local skill")
+	writeTestSkill(t, filepath.Join(root, "invalid"), "invalid_name", "invalid skill")
 
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"check", "--json", "--path", root}, &stdout, &stderr); code != 0 {
@@ -31,6 +33,9 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 	if len(reports) != 1 || reports[0].Identity != "declared-name" || reports[0].Provider != "local-authoring" || reports[0].Status != "local/untracked (no update source)" {
 		t.Fatalf("unexpected report: %#v", reports)
 	}
+	if !strings.Contains(stderr.String(), `invalid name "invalid_name"`) {
+		t.Fatalf("missing invalid name reason: %s", stderr.String())
+	}
 
 	stdout.Reset()
 	stderr.Reset()
@@ -39,6 +44,18 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "skillctl track --source SOURCE_URL declared-name") {
 		t.Fatalf("missing track hint: %s", stdout.String())
+	}
+}
+
+func TestHelpListsCommandsAndOptions(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("help failed (%d): %s", code, stderr.String())
+	}
+	for _, expected := range []string{"skillctl check", "skillctl update", "skillctl track", "--json", "--source", "Examples:"} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Fatalf("help is missing %q: %s", expected, stdout.String())
+		}
 	}
 }
 
@@ -228,6 +245,79 @@ func TestTrackedUpdateSafety(t *testing.T) {
 			t.Fatalf("failed update was not rolled back: %v, %s", err, stderr.String())
 		}
 	})
+}
+
+func TestVercelUpdateRollsBackOnProviderFailure(t *testing.T) {
+	dir := t.TempDir()
+	installed := filepath.Join(dir, "demo")
+	writeTestSkill(t, installed, "demo", "original")
+	originalSkill, err := os.ReadFile(filepath.Join(installed, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, "lock.json")
+	originalLock := []byte(`{"version":3,"skills":{"demo":{"sourceType":"github"}}}`)
+	if err := os.WriteFile(manifestPath, originalLock, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	originalUpdater := runVercelUpdater
+	t.Cleanup(func() { runVercelUpdater = originalUpdater })
+	runVercelUpdater = func(context.Context, vercelUpdateRequest, io.Writer) (string, error) {
+		if err := os.RemoveAll(installed); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(manifestPath, []byte("changed"), 0o600); err != nil {
+			return "", err
+		}
+		return "", errors.New("provider failed")
+	}
+
+	session := newSourceSession(context.Background(), io.Discard)
+	defer session.close()
+	claim := vercelClaim{Name: "demo", ManifestPath: manifestPath, Entry: vercelLockEntry{SourceType: "github"}}
+	if _, err := updateVercelProvider(context.Background(), session, skill{Name: "demo", Path: installed}, claim, io.Discard); err == nil {
+		t.Fatal("provider failure unexpectedly succeeded")
+	}
+	assertFileContent(t, filepath.Join(installed, "SKILL.md"), originalSkill)
+	assertFileContent(t, manifestPath, originalLock)
+}
+
+func TestGHSkillUpdateRollsBackOnProviderFailure(t *testing.T) {
+	dir := t.TempDir()
+	installed := filepath.Join(dir, "demo")
+	writeTestSkill(t, installed, "demo", "original")
+	originalSkill, err := os.ReadFile(filepath.Join(installed, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	originalUpdater := runGHSkillUpdater
+	t.Cleanup(func() { runGHSkillUpdater = originalUpdater })
+	runGHSkillUpdater = func(context.Context, ghSkillUpdateRequest, io.Writer) (string, error) {
+		if err := os.RemoveAll(installed); err != nil {
+			return "", err
+		}
+		return "", errors.New("provider failed")
+	}
+
+	session := newSourceSession(context.Background(), io.Discard)
+	defer session.close()
+	if _, err := updateGHSkillProvider(context.Background(), session, skill{Name: "demo", Path: installed}, ghSkillClaim{}, io.Discard); err == nil {
+		t.Fatal("provider failure unexpectedly succeeded")
+	}
+	assertFileContent(t, filepath.Join(installed, "SKILL.md"), originalSkill)
+}
+
+func assertFileContent(t *testing.T, path string, expected []byte) {
+	t.Helper()
+	actual, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(actual, expected) {
+		t.Fatalf("%s = %q, want %q", path, actual, expected)
+	}
 }
 
 func TestExplicitConfigRejectsUnknownFields(t *testing.T) {

@@ -19,7 +19,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-var version = "0.3.0"
+var version = "0.3.1"
 
 const defaultNetworkTimeout = 10 * time.Second
 
@@ -460,9 +460,9 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 		}
 		err = walkFollowingLinks(root, visitedDirs, func(path, real string) error {
 			dir := filepath.Dir(path)
-			name, valid := readSkill(path, filepath.Base(real))
-			if !valid {
-				fmt.Fprintf(stderr, "%s: skipped (invalid skill)\n", path)
+			name, err := readSkill(path)
+			if err != nil {
+				fmt.Fprintf(stderr, "%s: skipped (%v)\n", path, err)
 				return nil
 			}
 			key := canonicalPathKey(real)
@@ -820,22 +820,40 @@ func oneLine(value string) string {
 
 var skillName = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
-func readSkill(path, _ string) (string, bool) {
+func readSkill(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("read skill: %w", err)
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
-	if !scanner.Scan() || scanner.Text() != "---" {
-		return "", false
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return "", fmt.Errorf("read front matter: %w", err)
+		}
+		return "", errors.New("missing YAML front matter")
+	}
+	if scanner.Text() != "---" {
+		return "", errors.New("missing YAML front matter")
 	}
 	values := map[string]string{}
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "---" {
 			name := values["name"]
-			return name, len(name) <= 64 && skillName.MatchString(name) && values["description"] != ""
+			if name == "" {
+				return "", errors.New("missing name")
+			}
+			if len(name) > 64 {
+				return "", errors.New("name exceeds 64 characters")
+			}
+			if !skillName.MatchString(name) {
+				return "", fmt.Errorf("invalid name %q: use lowercase letters, numbers, and hyphens", name)
+			}
+			if values["description"] == "" {
+				return "", errors.New("missing description")
+			}
+			return name, nil
 		}
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
@@ -847,7 +865,10 @@ func readSkill(path, _ string) (string, bool) {
 			values[key] = value
 		}
 	}
-	return "", false
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("read front matter: %w", err)
+	}
+	return "", errors.New("unterminated YAML front matter")
 }
 
 func selectSkills(all []skill, names []string) ([]skill, error) {
@@ -874,5 +895,35 @@ func selectSkills(all []skill, names []string) ([]skill, error) {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "Usage: skillctl <check|update|track> [--timeout 10s] [options] [skill...]")
+	fmt.Fprint(w, `Usage:
+  skillctl check [options] [skill...]
+  skillctl update [options] [skill...]
+  skillctl track [options] skill
+  skillctl --version
+
+Commands:
+  check               check installed skills for updates
+  update              safely update installed skills
+  track               register the source of one copied skill
+
+Options:
+  --path PATH         replace configured roots; repeatable
+  --config FILE       use a specific configuration file
+  --timeout DURATION  set the network timeout, for example 30s
+  --json              emit JSON for check or update
+  --help              show this help
+
+Track options:
+  --source SOURCE     Git URL or local repository path
+  --ref REF           branch, tag, or commit
+  --skill-path PATH   repository-relative skill path
+
+Options must appear before skill names.
+
+Examples:
+  skillctl check
+  skillctl check --json
+  skillctl update obsidian-assistant
+  skillctl track --source https://github.com/example/skills.git --skill-path skills/example example
+`)
 }

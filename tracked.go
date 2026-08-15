@@ -128,8 +128,8 @@ func trackCopiedSkill(ctx context.Context, item skill, source, ref, skillPath st
 	if err != nil {
 		return err
 	}
-	remoteName, valid := readSkill(filepath.Join(remoteSkill, "SKILL.md"), filepath.Base(remoteSkill))
-	if !valid || remoteName != item.Name {
+	remoteName, readErr := readSkill(filepath.Join(remoteSkill, "SKILL.md"))
+	if readErr != nil || remoteName != item.Name {
 		return fmt.Errorf("source path does not contain skill %q", item.Name)
 	}
 	installedHash, err := hashDirectory(item.Path)
@@ -220,8 +220,8 @@ func processTracked(action string, items []skill, state *trackedState, session *
 			failed = true
 			continue
 		}
-		remoteName, valid := readSkill(filepath.Join(remoteSkill, "SKILL.md"), filepath.Base(remoteSkill))
-		if !valid || remoteName != item.Name {
+		remoteName, readErr := readSkill(filepath.Join(remoteSkill, "SKILL.md"))
+		if readErr != nil || remoteName != item.Name {
 			reportFailure(stderr, item, fmt.Sprintf("source path does not contain skill %q", item.Name))
 			failed = true
 			continue
@@ -387,8 +387,8 @@ func discoverSourceSkill(cache, name string) (string, error) {
 			return nil
 		}
 		dir := filepath.Dir(path)
-		found, valid := readSkill(path, filepath.Base(dir))
-		if valid && found == name {
+		found, readErr := readSkill(path)
+		if readErr == nil && found == name {
 			rel, err := filepath.Rel(cache, dir)
 			if err != nil {
 				return err

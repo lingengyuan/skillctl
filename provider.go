@@ -323,8 +323,8 @@ func updateVercelProvider(ctx context.Context, session *sourceSession, item skil
 		err = fmt.Errorf("provider did not advance the lock revision")
 	}
 	if err == nil {
-		name, valid := readSkill(filepath.Join(item.Path, "SKILL.md"), filepath.Base(item.Path))
-		if !valid || name != item.Name {
+		name, readErr := readSkill(filepath.Join(item.Path, "SKILL.md"))
+		if readErr != nil || name != item.Name {
 			err = fmt.Errorf("updated directory does not contain skill %q", item.Name)
 		}
 	}

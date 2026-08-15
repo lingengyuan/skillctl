@@ -183,8 +183,8 @@ func updateGHSkillProvider(ctx context.Context, session *sourceSession, item ski
 		} else if available {
 			err = fmt.Errorf("post-update verification still finds an update")
 		} else {
-			name, valid := readSkill(filepath.Join(item.Path, "SKILL.md"), filepath.Base(item.Path))
-			if !valid || name != item.Name {
+			name, readErr := readSkill(filepath.Join(item.Path, "SKILL.md"))
+			if readErr != nil || name != item.Name {
 				err = fmt.Errorf("updated directory does not contain skill %q", item.Name)
 			} else {
 				fmt.Fprintf(progress, "GitHub CLI update verified (%s).\n", time.Since(started).Round(time.Millisecond))
