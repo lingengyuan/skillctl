@@ -64,7 +64,7 @@ host = "codex"
 scope = "user"
 ```
 
-`network_timeout` 默认是 `10s`，也可以用 `--timeout` 临时覆盖。`[[roots]]` 可以重复配置。也可以使用 `--config FILE` 临时指定配置文件。
+`network_timeout` 默认是 `10s`，分别应用于每个远端来源、provider 更新和 Git 网络操作；也可以用 `--timeout` 临时覆盖。`[[roots]]` 可以重复配置。也可以使用 `--config FILE` 临时指定配置文件。
 
 ## 开发
 

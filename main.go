@@ -19,7 +19,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-var version = "0.3.1"
+var version = "0.3.2"
 
 const defaultNetworkTimeout = 10 * time.Second
 
@@ -224,14 +224,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), networkTimeout)
-	defer cancel()
+	ctx := context.Background()
 	if args[0] == "track" {
 		if len(skills) != 1 {
 			fmt.Fprintln(stderr, "track requires exactly one unambiguous skill")
 			return 1
 		}
-		if err := trackCopiedSkill(ctx, skills[0], opt.Source, opt.Ref, opt.SkillPath, state); err != nil {
+		operationCtx, cancel := context.WithTimeout(ctx, networkTimeout)
+		err := trackCopiedSkill(operationCtx, skills[0], opt.Source, opt.Ref, opt.SkillPath, state)
+		cancel()
+		if err != nil {
 			fmt.Fprintf(stderr, "%s: failed (%s)\n", skills[0].Name, oneLine(err.Error()))
 			return 1
 		}
@@ -243,7 +245,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		resultWriter = io.Discard
 	}
 	fmt.Fprintf(progress, "Checking %d skill instances...\n", len(skills))
-	reports, gitFailed := inspect(ctx, args[0], skills, state, manifests, managed, resultWriter, progress)
+	reports, gitFailed := inspect(ctx, networkTimeout, args[0], skills, state, manifests, managed, resultWriter, progress)
 	if opt.JSON {
 		if err := json.NewEncoder(stdout).Encode(reports); err != nil {
 			fmt.Fprintln(stderr, err)
@@ -630,7 +632,7 @@ func processGit(action string, skills []skill, state *trackedState, session *sou
 		if sink, ok := stdout.(*reportSink); ok {
 			sink.markGit(repos[root].Skills, root)
 		}
-		if processRepository(session.ctx, action, repos[root], stdout, stderr) {
+		if processRepository(session.ctx, session.networkTimeout, action, repos[root], stdout, stderr) {
 			failed = true
 		}
 	}
@@ -706,7 +708,7 @@ func gitTracks(root, path string) bool {
 	return err == nil
 }
 
-func processRepository(ctx context.Context, action string, repo *repository, stdout, stderr io.Writer) bool {
+func processRepository(ctx context.Context, networkTimeout time.Duration, action string, repo *repository, stdout, stderr io.Writer) bool {
 	branch, err := gitOutput(repo.Root, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		printSkills(stdout, repo.Skills, "skipped (detached HEAD)")
@@ -721,7 +723,7 @@ func processRepository(ctx context.Context, action string, repo *repository, std
 		printSkills(stdout, repo.Skills, "skipped (no upstream)")
 		return false
 	}
-	if _, err := gitNetworkOutput(ctx, repo.Root, "fetch", "--prune", "--recurse-submodules=no", remote); err != nil {
+	if _, err := gitNetworkOutputWithTimeout(ctx, networkTimeout, repo.Root, "fetch", "--prune", "--recurse-submodules=no", remote); err != nil {
 		printSkills(stderr, repo.Skills, "failed (git fetch: "+oneLine(err.Error())+")")
 		return true
 	}
@@ -752,7 +754,7 @@ func processRepository(ctx context.Context, action string, repo *repository, std
 		return false
 	}
 	oldHead, _ := gitOutput(repo.Root, "rev-parse", "--short", "HEAD")
-	if _, err := gitNetworkOutput(ctx, repo.Root, "-c", "submodule.recurse=false", "pull", "--ff-only", "--no-rebase", "--recurse-submodules=no"); err != nil {
+	if _, err := gitNetworkOutputWithTimeout(ctx, networkTimeout, repo.Root, "-c", "submodule.recurse=false", "pull", "--ff-only", "--no-rebase", "--recurse-submodules=no"); err != nil {
 		printSkills(stderr, repo.Skills, "failed (git pull: "+oneLine(err.Error())+")")
 		return true
 	}
@@ -789,6 +791,12 @@ func gitNetworkOutput(ctx context.Context, dir string, args ...string) (string, 
 		return "", fmt.Errorf("%s", strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(string(output)), nil
+}
+
+func gitNetworkOutputWithTimeout(ctx context.Context, timeout time.Duration, dir string, args ...string) (string, error) {
+	operationCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return gitNetworkOutput(operationCtx, dir, args...)
 }
 
 func printSkills(w io.Writer, skills []skill, message string) {
@@ -909,7 +917,7 @@ Commands:
 Options:
   --path PATH         replace configured roots; repeatable
   --config FILE       use a specific configuration file
-  --timeout DURATION  set the network timeout, for example 30s
+  --timeout DURATION  set each network operation timeout, for example 30s
   --json              emit JSON for check or update
   --help              show this help
 

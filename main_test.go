@@ -148,7 +148,7 @@ func TestSourceSessionDeduplicatesAndRunsConcurrently(t *testing.T) {
 		return source, nil
 	}
 
-	session := newSourceSession(context.Background(), io.Discard)
+	session := newSourceSession(context.Background(), defaultNetworkTimeout, io.Discard)
 	done := make(chan struct{})
 	go func() {
 		session.prefetch([]sourceRequest{{Source: "one"}, {Source: "two"}, {Source: "one"}})
@@ -169,6 +169,35 @@ func TestSourceSessionDeduplicatesAndRunsConcurrently(t *testing.T) {
 	defer mu.Unlock()
 	if calls != 2 {
 		t.Fatalf("sync calls = %d, want 2 unique sources", calls)
+	}
+}
+
+func TestSourceSessionAppliesTimeoutPerSource(t *testing.T) {
+	original := syncSourceForSession
+	t.Cleanup(func() { syncSourceForSession = original })
+	syncSourceForSession = func(ctx context.Context, source, _ string) (string, error) {
+		if _, ok := ctx.Deadline(); !ok {
+			return "", errors.New("source check has no deadline")
+		}
+		timer := time.NewTimer(350 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-timer.C:
+			return source, nil
+		}
+	}
+
+	session := newSourceSession(context.Background(), 500*time.Millisecond, io.Discard)
+	for _, source := range []string{"first", "second"} {
+		cache, err := session.source(source, "")
+		if err != nil {
+			t.Fatalf("%s source check failed: %v", source, err)
+		}
+		if cache != source {
+			t.Fatalf("%s cache = %q", source, cache)
+		}
 	}
 }
 
@@ -202,6 +231,103 @@ func TestCheckReportsProgressAndHonorsTimeout(t *testing.T) {
 	}
 	if code != 1 || !strings.Contains(stderr.String(), "Checking remote source") || !strings.Contains(stdout.String()+stderr.String(), "timeout") {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestUpdateAppliesTimeoutPerProviderOperation(t *testing.T) {
+	home := setTestHome(t)
+	root := filepath.Join(home, "skills")
+	sourceRoot := filepath.Join(home, "source")
+	installed := map[string]string{}
+	remoteHashes := map[string]string{}
+	lock := vercelLock{Version: 3, Skills: map[string]vercelLockEntry{}}
+	for _, name := range []string{"first-skill", "second-skill"} {
+		installed[name] = filepath.Join(root, name)
+		writeTestSkill(t, installed[name], name, "old")
+		installedHash, err := hashDirectory(installed[name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		remote := filepath.Join(sourceRoot, name)
+		writeTestSkill(t, remote, name, "new")
+		remoteHashes[name], err = hashDirectory(remote)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lock.Skills[name] = vercelLockEntry{
+			SourceType:      "git",
+			SourceURL:       "fixture",
+			SkillPath:       filepath.ToSlash(filepath.Join(name, "SKILL.md")),
+			SkillFolderHash: installedHash,
+		}
+	}
+
+	lockPath := filepath.Join(home, ".agents", ".skill-lock.json")
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeLock := func(value vercelLock) error {
+		content, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(lockPath, content, 0o600)
+	}
+	if err := writeLock(lock); err != nil {
+		t.Fatal(err)
+	}
+
+	configPath := filepath.Join(home, "config.toml")
+	config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"test\"\nscope = \"user\"\n[[manifests]]\nkind = \"vercel-skills-lock-v3\"\npath = %q\ninstall_root = %q\n", filepath.ToSlash(root), filepath.ToSlash(lockPath), filepath.ToSlash(root))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	originalSync := syncSourceForSession
+	t.Cleanup(func() { syncSourceForSession = originalSync })
+	syncSourceForSession = func(context.Context, string, string) (string, error) {
+		return sourceRoot, nil
+	}
+	originalUpdater := runVercelUpdater
+	t.Cleanup(func() { runVercelUpdater = originalUpdater })
+	runVercelUpdater = func(ctx context.Context, request vercelUpdateRequest, _ io.Writer) (string, error) {
+		timer := time.NewTimer(350 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+		writeTestSkill(t, installed[request.Name], request.Name, "new")
+		content, err := os.ReadFile(lockPath)
+		if err != nil {
+			return "", err
+		}
+		var current vercelLock
+		if err := json.Unmarshal(content, &current); err != nil {
+			return "", err
+		}
+		entry := current.Skills[request.Name]
+		entry.SkillFolderHash = remoteHashes[request.Name]
+		current.Skills[request.Name] = entry
+		if err := writeLock(current); err != nil {
+			return "", err
+		}
+		return "updated", nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"update", "--timeout", "500ms", "--config", configPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("update failed (%d):\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+	}
+	for name, installedPath := range installed {
+		got, err := hashDirectory(installedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != remoteHashes[name] {
+			t.Fatalf("%s was not updated", name)
+		}
 	}
 }
 
@@ -273,7 +399,7 @@ func TestVercelUpdateRollsBackOnProviderFailure(t *testing.T) {
 		return "", errors.New("provider failed")
 	}
 
-	session := newSourceSession(context.Background(), io.Discard)
+	session := newSourceSession(context.Background(), defaultNetworkTimeout, io.Discard)
 	defer session.close()
 	claim := vercelClaim{Name: "demo", ManifestPath: manifestPath, Entry: vercelLockEntry{SourceType: "github"}}
 	if _, err := updateVercelProvider(context.Background(), session, skill{Name: "demo", Path: installed}, claim, io.Discard); err == nil {
@@ -301,7 +427,7 @@ func TestGHSkillUpdateRollsBackOnProviderFailure(t *testing.T) {
 		return "", errors.New("provider failed")
 	}
 
-	session := newSourceSession(context.Background(), io.Discard)
+	session := newSourceSession(context.Background(), defaultNetworkTimeout, io.Discard)
 	defer session.close()
 	if _, err := updateGHSkillProvider(context.Background(), session, skill{Name: "demo", Path: installed}, ghSkillClaim{}, io.Discard); err == nil {
 		t.Fatal("provider failure unexpectedly succeeded")
@@ -372,7 +498,7 @@ func newTrackedFixture(t *testing.T) (skill, *trackedState, *sourceSession, stri
 			InstalledHash: installedHash,
 		}},
 	}
-	session := newSourceSession(context.Background(), io.Discard)
+	session := newSourceSession(context.Background(), defaultNetworkTimeout, io.Discard)
 	session.caches[sourceKey("fixture", "")] = sourceRoot
 	return item, state, session, installed
 }
