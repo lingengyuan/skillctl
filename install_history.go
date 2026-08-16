@@ -48,25 +48,21 @@ type historyRecord struct {
 }
 
 func trackFromInstallHistory(ctx context.Context, timeout time.Duration, items []skill, state *trackedState, manifests []manifest, managed []managedRoot, namesExplicit bool, stdout, stderr io.Writer) bool {
-	locks, _ := loadVercelLocks(manifests)
-	hostClaims := loadCodexCuratedClaims(items)
+	provenance, _ := newProvenanceIndex(items, state, manifests, managed)
 	rootCache := map[string]gitRootResult{}
 	var pending []skill
 	for _, item := range items {
-		if _, ok := state.findSkill(item); ok {
+		claims := provenance.claims(item)
+		if claims.hasTracked {
 			fmt.Fprintf(stdout, "%s: already tracked\n", item.Name)
 			continue
 		}
-		_, _, lockClaim := locks.claim(item)
-		_, hostClaim := hostClaims[item.Path]
-		managedClaim, _ := managedOwner(item, managed)
-		ghClaim := readGHSkillClaim(item)
 		root, gitClaim := findGitRoot(item.Path, rootCache)
 		if gitClaim {
 			relSkill, err := filepath.Rel(root, filepath.Join(item.Path, "SKILL.md"))
 			gitClaim = err == nil && within(root, filepath.Join(item.Path, "SKILL.md")) && gitTracks(root, relSkill)
 		}
-		if lockClaim || hostClaim || managedClaim != "" || ghClaim.Found || gitClaim {
+		if claims.count() > 0 || gitClaim {
 			fmt.Fprintf(stdout, "%s: already managed by existing metadata\n", item.Name)
 			continue
 		}
