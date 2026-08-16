@@ -45,6 +45,15 @@ skillctl track \
   example-skill
 ```
 
+也可以从 Codex 或 Claude Code 的结构化会话记录恢复可信来源：
+
+```sh
+skillctl track --from-history
+skillctl track --from-history example-skill
+```
+
+历史记录只提供候选来源；内容与当前版本或 Git 历史匹配后才会登记。程序不会读取普通对话文本，也不会根据名称猜测仓库。
+
 Git worktree、`skillctl track`、Vercel Skills v3 lock 和 `gh skill` metadata 支持安全更新。Vercel 更新需要 Node.js / `npx` 或全局 `skills` 命令；`gh skill` 更新需要 GitHub CLI。Codex system skills 和通过 Codex curated cache 验证的 skills 只检查、不更新。无法确认来源的目录显示为 `local/untracked`；程序不会根据名称猜测 GitHub 来源。
 
 ## 配置

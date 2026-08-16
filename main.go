@@ -19,7 +19,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-var version = "0.3.4"
+var version = "0.3.5"
 
 const defaultNetworkTimeout = 10 * time.Second
 
@@ -129,15 +129,16 @@ type skill struct {
 }
 
 type options struct {
-	Paths      []string
-	ConfigPath string
-	Names      []string
-	Help       bool
-	Source     string
-	Ref        string
-	SkillPath  string
-	JSON       bool
-	Timeout    time.Duration
+	Paths       []string
+	ConfigPath  string
+	Names       []string
+	Help        bool
+	Source      string
+	Ref         string
+	SkillPath   string
+	FromHistory bool
+	JSON        bool
+	Timeout     time.Duration
 }
 
 func main() {
@@ -226,6 +227,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	if args[0] == "track" {
+		if opt.FromHistory {
+			if opt.Source != "" || opt.Ref != "" || opt.SkillPath != "" {
+				fmt.Fprintln(stderr, "--from-history cannot be combined with --source, --ref, or --skill-path")
+				return 2
+			}
+			if trackFromInstallHistory(ctx, networkTimeout, skills, state, manifests, managed, len(opt.Names) > 0, stdout, stderr) || scanFailed {
+				return 1
+			}
+			return 0
+		}
 		if len(skills) != 1 {
 			fmt.Fprintln(stderr, "track requires exactly one unambiguous skill")
 			return 1
@@ -317,6 +328,9 @@ func parseCommand(args []string, stderr io.Writer) (options, int) {
 			}
 			opt.SkillPath = args[1]
 			args = args[2:]
+		case "--from-history":
+			opt.FromHistory = true
+			args = args[1:]
 		default:
 			fmt.Fprintf(stderr, "unknown option: %s\n", args[0])
 			return options{}, 2
@@ -925,6 +939,7 @@ Track options:
   --source SOURCE     Git URL or local repository path
   --ref REF           branch, tag, or commit
   --skill-path PATH   repository-relative skill path
+  --from-history      recover sources from trusted Codex/Claude install records
 
 Options must appear before skill names.
 
@@ -933,5 +948,7 @@ Examples:
   skillctl check --json
   skillctl update obsidian-assistant
   skillctl track --source https://github.com/example/skills.git --skill-path skills/example example
+  skillctl track --from-history
+  skillctl track --from-history example
 `)
 }
