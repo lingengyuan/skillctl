@@ -53,7 +53,7 @@ temp=$(mktemp -d)
 trap 'rm -rf "$temp"' EXIT INT TERM
 curl -fsSL "$base/$archive" -o "$temp/$archive"
 curl -fsSL "$base/SHA256SUMS" -o "$temp/SHA256SUMS"
-expected=$(awk -v file="$archive" '$2 == file { print $1; exit }' "$temp/SHA256SUMS")
+expected=$(awk -v file="$archive" '{ sub(/\r$/, "", $2); if ($2 == file) { print $1; exit } }' "$temp/SHA256SUMS")
 [ -n "$expected" ] || { echo "no checksum found for $archive" >&2; exit 1; }
 if command -v sha256sum >/dev/null 2>&1; then
   actual=$(sha256sum "$temp/$archive" | awk '{print $1}')

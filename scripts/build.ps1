@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.3.3"
+    [string]$Version = "0.3.4"
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,4 +47,5 @@ $lines = foreach ($archive in $archives) {
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
     "$hash  $(Split-Path -Leaf $archive)"
 }
-Set-Content -LiteralPath (Join-Path $dist "SHA256SUMS") -Value $lines -Encoding utf8NoBOM
+$checksumText = ($lines -join "`n") + "`n"
+[IO.File]::WriteAllText((Join-Path $dist "SHA256SUMS"), $checksumText, [Text.UTF8Encoding]::new($false))

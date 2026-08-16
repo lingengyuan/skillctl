@@ -19,7 +19,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-var version = "0.3.3"
+var version = "0.3.4"
 
 const defaultNetworkTimeout = 10 * time.Second
 
