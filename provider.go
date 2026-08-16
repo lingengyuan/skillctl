@@ -54,6 +54,7 @@ type vercelLockEntry struct {
 
 func inspect(ctx context.Context, networkTimeout time.Duration, action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, stdout, progress io.Writer) ([]report, bool) {
 	locks, lockErrors := loadVercelLocks(manifests)
+	hostClaims := loadCodexCuratedClaims(skills)
 	ghClaims := make(map[string]ghSkillClaimResult, len(skills))
 	for _, item := range skills {
 		if !item.Broken {
@@ -69,6 +70,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 		}
 		claim, _, providerClaim := locks.claim(item)
 		ghClaim := ghClaims[item.Path]
+		_, hostClaim := hostClaims[item.Path]
 		managedClaim, _ := managedOwner(item, managed)
 		tracked, trackedClaim := state.findSkill(item)
 		claims := 0
@@ -82,6 +84,9 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			claims++
 		}
 		if ghClaim.Found {
+			claims++
+		}
+		if hostClaim {
 			claims++
 		}
 		if claims != 1 {
@@ -130,6 +135,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 		}
 		claim, evidence, found := locks.claim(item)
 		ghClaim := ghClaims[item.Path]
+		hostClaim, hasHostClaim := hostClaims[item.Path]
 		managedOwner, managedEvidence := managedOwner(item, managed)
 		tracked, isTracked := state.findSkill(item)
 		claims := 0
@@ -145,6 +151,9 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 		if ghClaim.Found {
 			claims++
 		}
+		if hasHostClaim {
+			claims++
+		}
 		if claims > 1 {
 			allEvidence := append([]string{}, managedEvidence...)
 			allEvidence = append(allEvidence, evidence...)
@@ -154,12 +163,21 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			if ghClaim.Found {
 				allEvidence = append(allEvidence, filepath.Join(item.Path, "SKILL.md"))
 			}
+			if hasHostClaim {
+				allEvidence = append(allEvidence, hostClaim.Evidence...)
+			}
 			reports = append(reports, reportFor(item, "ambiguous", "unknown", allEvidence, "unknown", "ambiguous provenance", false, "report-only", "authoritative claims conflict"))
 			failed = true
 			continue
 		}
 		if managedOwner != "" {
 			reports = append(reports, reportFor(item, "codex-host", "host", managedEvidence, "none", "managed by "+managedOwner, false, "report-only", ""))
+			continue
+		}
+		if hasHostClaim {
+			r := reportFor(item, hostClaim.Provider, hostClaim.Owner, hostClaim.Evidence, "clean", "managed by codex", false, "report-only", "")
+			r.Revision = hostClaim.Revision
+			reports = append(reports, r)
 			continue
 		}
 		if ghClaim.Found {

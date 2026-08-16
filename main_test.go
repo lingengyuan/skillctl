@@ -103,6 +103,76 @@ func TestCheckRecognizesProviderMetadata(t *testing.T) {
 	}
 }
 
+func TestCheckRecognizesCodexCuratedMetadataOnlyAfterContentVerification(t *testing.T) {
+	home := setTestHome(t)
+	codexHome := filepath.Join(home, ".codex")
+	t.Setenv("CODEX_HOME", codexHome)
+	installedRoot := filepath.Join(codexHome, "skills")
+	installed := filepath.Join(installedRoot, "curated-skill")
+	source := filepath.Join(codexHome, "vendor_imports", "skills", "skills", ".curated", "curated-skill")
+	writeTestSkill(t, installed, "curated-skill", "same content")
+	writeTestSkill(t, source, "curated-skill", "same content")
+	manifestPath := filepath.Join(codexHome, "vendor_imports", "skills-curated-cache.json")
+	manifest := `{"skills":[{"name":"curated-skill","repoPath":"skills/.curated/curated-skill"}]}`
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(home, "config.toml")
+	config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"codex\"\nscope = \"user\"\n", filepath.ToSlash(installedRoot))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	check := func() report {
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{"check", "--json", "--config", configPath}, &stdout, &stderr); code != 0 {
+			t.Fatalf("check failed (%d): %s", code, stderr.String())
+		}
+		var reports []report
+		if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
+			t.Fatal(err)
+		}
+		if len(reports) != 1 {
+			t.Fatalf("reports = %#v", reports)
+		}
+		return reports[0]
+	}
+
+	if got := check(); got.Provider != "codex-curated-cache" || got.Status != "managed by codex" || got.Drift != "clean" {
+		t.Fatalf("unexpected verified report: %#v", got)
+	}
+	writeTestSkill(t, installed, "curated-skill", "local modification")
+	if got := check(); got.Provider != "local-authoring" || got.Status != "local/untracked (no update source)" {
+		t.Fatalf("modified copy was claimed from metadata: %#v", got)
+	}
+}
+
+func TestCheckDoesNotGuessCodexCuratedSourceFromName(t *testing.T) {
+	home := setTestHome(t)
+	codexHome := filepath.Join(home, ".codex")
+	t.Setenv("CODEX_HOME", codexHome)
+	installedRoot := filepath.Join(codexHome, "skills")
+	writeTestSkill(t, filepath.Join(installedRoot, "same-name"), "same-name", "same content")
+	writeTestSkill(t, filepath.Join(codexHome, "vendor_imports", "skills", "skills", ".curated", "same-name"), "same-name", "same content")
+	configPath := filepath.Join(home, "config.toml")
+	config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"codex\"\nscope = \"user\"\n", filepath.ToSlash(installedRoot))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", "--json", "--config", configPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("check failed (%d): %s", code, stderr.String())
+	}
+	var reports []report
+	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 1 || reports[0].Provider != "local-authoring" {
+		t.Fatalf("source was guessed without metadata: %#v", reports)
+	}
+}
+
 func TestRepositoryDecision(t *testing.T) {
 	tests := []struct {
 		name           string
