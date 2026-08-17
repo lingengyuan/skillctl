@@ -16,6 +16,13 @@ func TestTrustedCommandsOnlyReadsStructuredToolCalls(t *testing.T) {
 		t.Fatalf("Codex command = %#v", got)
 	}
 
+	currentCommand := "python3 /tmp/install-skill-from-github.py --repo tw93/Waza --path skills/write skills/learn skills/read --dest /tmp/codex/skills"
+	currentInput, _ := json.Marshal(`const r = await tools.shell_command({command:"` + currentCommand + `"}); text(r)`)
+	currentCodex := []byte(`{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":` + string(currentInput) + `}}`)
+	if got := trustedCommands(currentCodex); len(got) != 1 || got[0] != currentCommand {
+		t.Fatalf("current Codex command = %#v", got)
+	}
+
 	claude := []byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"python3 /tmp/install-skill-from-github.py --repo owner/repo --path demo"}}]}}`)
 	if got := trustedCommands(claude); len(got) != 1 {
 		t.Fatalf("Claude commands = %#v", got)
@@ -62,6 +69,30 @@ func TestReadInstallHistoryRoots(t *testing.T) {
 	}
 	if len(got["demo"]) != 1 || got["demo"][0].SkillPath != "skills/demo" {
 		t.Fatalf("history = %#v", got)
+	}
+}
+
+func TestReadInstallHistoryRootsParsesCurrentCodexInstallerCommand(t *testing.T) {
+	root := t.TempDir()
+	command := "python C:/Users/test/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py --repo tw93/Waza --path skills/write skills/learn skills/read --dest C:/Users/test/.codex/skills"
+	input, err := json.Marshal(`const r = await tools.shell_command({command:"` + command + `"}); text(r)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := `{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":` + string(input) + `}}` + "\n"
+	if err := os.WriteFile(filepath.Join(root, "session.jsonl"), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := readInstallHistoryRoots([]string{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"write", "learn", "read"} {
+		matches := got[name]
+		if len(matches) != 1 || matches[0].Source != "https://github.com/tw93/Waza.git" || matches[0].SkillPath != "skills/"+name {
+			t.Fatalf("history candidate for %s = %#v", name, matches)
+		}
 	}
 }
 

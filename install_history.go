@@ -18,7 +18,7 @@ import (
 
 const githubInstaller = "install-skill-from-github.py"
 
-var commandProperty = regexp.MustCompile(`\bcmd\s*:\s*("(?:\\.|[^"\\])*")`)
+var commandProperty = regexp.MustCompile(`\b(?:cmd|command)\s*:\s*("(?:\\.|[^"\\])*")`)
 
 type installCandidate struct {
 	Name      string

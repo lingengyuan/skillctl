@@ -181,11 +181,12 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 		failed = processGit(action, remaining, state, session, sink, sink) || failed
 		reports = append(reports, sink.reports...)
 	}
+	reports = mergeReportsByIdentity(reports)
 	sort.Slice(reports, func(i, j int) bool {
 		return reports[i].Identity < reports[j].Identity || reports[i].Identity == reports[j].Identity && reports[i].Path < reports[j].Path
 	})
 	for _, r := range reports {
-		printReport(stdout, r, duplicateName(reports, r.Identity))
+		printReport(stdout, r, false)
 	}
 	printTrackRepairHint(stdout, reports)
 	return reports, failed

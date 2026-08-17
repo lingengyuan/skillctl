@@ -94,6 +94,14 @@ func TestIntegrationHistoryLifecycle(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sessions, "session.jsonl"), []byte(record), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	codexSessions := filepath.Join(home, ".codex", "sessions")
+	if err := os.MkdirAll(codexSessions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	codexRecord := `{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const r = await tools.shell_command({command:\"python3 /tmp/install-skill-from-github.py --repo test/history --path skills/history-skill\"}); text(r)"}}` + "\n"
+	if err := os.WriteFile(filepath.Join(codexSessions, "session.jsonl"), []byte(codexRecord), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	var stdout, stderr bytes.Buffer
 	args := []string{"track", "--timeout", "60s", "--path", installedRoot, "--from-history", "history-skill"}

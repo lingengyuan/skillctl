@@ -47,6 +47,68 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 	}
 }
 
+func TestCheckDeduplicatesSameSkillAcrossRoots(t *testing.T) {
+	home := setTestHome(t)
+	firstRoot := filepath.Join(home, "first-skills")
+	secondRoot := filepath.Join(home, "second-skills")
+	writeTestSkill(t, filepath.Join(firstRoot, "shared-skill"), "shared-skill", "same")
+	writeTestSkill(t, filepath.Join(secondRoot, "shared-skill"), "shared-skill", "same")
+	configPath := filepath.Join(home, "config.toml")
+	config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"first\"\nscope = \"user\"\n[[roots]]\npath = %q\nhost = \"second\"\nscope = \"user\"\n", filepath.ToSlash(firstRoot), filepath.ToSlash(secondRoot))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", "--json", "--config", configPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("check failed (%d): %s", code, stderr.String())
+	}
+	var reports []report
+	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if len(reports) != 1 || reports[0].Identity != "shared-skill" {
+		t.Fatalf("duplicate skill was not collapsed: %#v", reports)
+	}
+	if len(reports[0].Aliases) < 2 || !containsPath(reports[0].Aliases, filepath.Join(firstRoot, "shared-skill")) || !containsPath(reports[0].Aliases, filepath.Join(secondRoot, "shared-skill")) {
+		t.Fatalf("merged report lost installation paths: %#v", reports[0])
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"check", "--config", configPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("text check failed (%d): %s", code, stderr.String())
+	}
+	if strings.Count(stdout.String(), "shared-skill [local-authoring, user]") != 1 {
+		t.Fatalf("text output still contains duplicate skill: %s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "Found 1 unique skills (2 installations") || !strings.Contains(stderr.String(), "Checking 1 unique skills (2 installations)") {
+		t.Fatalf("progress did not use deduplicated count: %s", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"check", "--json", "--config", configPath, "shared-skill"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("named check failed for duplicate installations (%d): %s", code, stderr.String())
+	}
+	stdoutReports := []report{}
+	if err := json.Unmarshal(stdout.Bytes(), &stdoutReports); err != nil {
+		t.Fatal(err)
+	}
+	if len(stdoutReports) != 1 || stdoutReports[0].Identity != "shared-skill" {
+		t.Fatalf("named check did not keep the logical skill unique: %#v", stdoutReports)
+	}
+}
+
+func containsPath(paths []string, want string) bool {
+	for _, path := range paths {
+		if samePath(path, want) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestHelpListsCommandsAndOptions(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"--help"}, &stdout, &stderr); code != 0 {

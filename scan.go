@@ -83,6 +83,14 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 	return skills, failed
 }
 
+func uniqueSkillCount(skills []skill) int {
+	seen := make(map[string]struct{}, len(skills))
+	for _, item := range skills {
+		seen[item.Name] = struct{}{}
+	}
+	return len(seen)
+}
+
 func addAliasesForVisitedDir(skills []skill, alias, canonical string) {
 	for i := range skills {
 		if !within(canonical, skills[i].Path) {
