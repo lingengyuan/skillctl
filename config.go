@@ -54,6 +54,16 @@ path = "~/.config/opencode/skills"
 host = "opencode"
 scope = "user"
 
+[[roots]]
+path = "~/.trae-cn/skills"
+host = "trae-cn"
+scope = "user"
+
+[[roots]]
+path = "~/.ghcp-appmod/skills"
+host = "ghcp-appmod"
+scope = "user"
+
 [[manifests]]
 kind = "vercel-skills-lock-v3"
 path = "~/.agents/.skill-lock.json"
