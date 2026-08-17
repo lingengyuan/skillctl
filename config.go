@@ -64,6 +64,26 @@ path = "~/.ghcp-appmod/skills"
 host = "ghcp-appmod"
 scope = "user"
 
+[[roots]]
+path = "~/.trae/skills"
+host = "trae"
+scope = "user"
+
+[[roots]]
+path = "~/.codebuddy/skills"
+host = "codebuddy"
+scope = "user"
+
+[[roots]]
+path = "~/.kiro/skills"
+host = "kiro"
+scope = "user"
+
+[[roots]]
+path = "~/.qoder/skills"
+host = "qoder"
+scope = "user"
+
 [[manifests]]
 kind = "vercel-skills-lock-v3"
 path = "~/.agents/.skill-lock.json"
