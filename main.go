@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var version = "0.3.7"
+var version = "0.3.8"
 
 const defaultNetworkTimeout = 10 * time.Second
 
@@ -87,7 +87,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	scanStarted := time.Now()
 	fmt.Fprintln(progress, "Scanning skills...")
 	skills, scanFailed := scan(roots, ignoreMissing, stderr)
-	fmt.Fprintf(progress, "Found %d skill instances (%s).\n", len(skills), time.Since(scanStarted).Round(time.Millisecond))
+	fmt.Fprintf(progress, "Found %d unique skills (%d installations, %s).\n", uniqueSkillCount(skills), len(skills), time.Since(scanStarted).Round(time.Millisecond))
 	if len(opt.Names) > 0 {
 		var err error
 		skills, err = selectSkills(skills, opt.Names)
@@ -142,7 +142,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if opt.JSON {
 		resultWriter = io.Discard
 	}
-	fmt.Fprintf(progress, "Checking %d skill instances...\n", len(skills))
+	fmt.Fprintf(progress, "Checking %d unique skills (%d installations)...\n", uniqueSkillCount(skills), len(skills))
 	reports, gitFailed := inspect(ctx, networkTimeout, args[0], skills, state, manifests, managed, resultWriter, progress)
 	if opt.JSON {
 		if err := json.NewEncoder(stdout).Encode(reports); err != nil {
@@ -271,14 +271,7 @@ func selectSkills(all []skill, names []string) ([]skill, error) {
 		if len(matches) == 0 {
 			return nil, fmt.Errorf("skill not found: %s", name)
 		}
-		if len(matches) > 1 {
-			var paths []string
-			for _, match := range matches {
-				paths = append(paths, match.Path)
-			}
-			return nil, fmt.Errorf("skill name is ambiguous: %s (%s)", name, strings.Join(paths, ", "))
-		}
-		selected = append(selected, matches[0])
+		selected = append(selected, matches...)
 	}
 	return selected, nil
 }

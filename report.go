@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -42,18 +43,104 @@ func printReport(w io.Writer, r report, showPath bool) {
 	fmt.Fprintf(w, "%s [%s, %s]: %s\n", name, r.Provider, r.Owner, status)
 }
 
-func duplicateName(reports []report, name string) bool {
-	n := 0
-	for _, r := range reports {
-		if r.Identity == name {
-			n++
-		}
-	}
-	return n > 1
-}
-
 type reportSink struct {
 	reports []report
+}
+
+func mergeReportsByIdentity(reports []report) []report {
+	groups := make(map[string][]report)
+	for _, item := range reports {
+		groups[item.Identity] = append(groups[item.Identity], item)
+	}
+	identities := make([]string, 0, len(groups))
+	for identity := range groups {
+		identities = append(identities, identity)
+	}
+	sort.Strings(identities)
+	merged := make([]report, 0, len(identities))
+	for _, identity := range identities {
+		group := groups[identity]
+		sort.SliceStable(group, func(i, j int) bool {
+			if group[i].Path == group[j].Path {
+				return group[i].Provider < group[j].Provider
+			}
+			return group[i].Path < group[j].Path
+		})
+		merged = append(merged, mergeReportGroup(group))
+	}
+	return merged
+}
+
+func mergeReportGroup(group []report) report {
+	merged := group[0]
+	if len(group) == 1 {
+		return merged
+	}
+
+	merged.Aliases = nil
+	providers := map[string]bool{}
+	owners := map[string]bool{}
+	executors := map[string]bool{}
+	statuses := map[string]bool{}
+	drifts := map[string]bool{}
+	revisions := map[string]bool{}
+	errors := map[string]bool{}
+	for _, item := range group {
+		providers[item.Provider] = true
+		owners[item.Owner] = true
+		executors[item.Executor] = true
+		statuses[item.Status] = true
+		drifts[item.Drift] = true
+		revisions[item.Revision] = true
+		if item.Error != "" {
+			errors[item.Error] = true
+		}
+		for _, path := range append([]string{item.Path}, item.Aliases...) {
+			merged.Aliases = appendUnique(merged.Aliases, path)
+		}
+		for _, evidence := range item.Evidence {
+			merged.Evidence = appendUnique(merged.Evidence, evidence)
+		}
+		merged.UpdateAvailable = merged.UpdateAvailable || item.UpdateAvailable
+	}
+
+	if len(providers) > 1 {
+		merged.Provider = "multiple"
+	}
+	if len(owners) > 1 {
+		merged.Owner = "multiple"
+	}
+	if len(executors) > 1 {
+		merged.Executor = "report-only"
+	}
+	if len(statuses) > 1 {
+		if merged.UpdateAvailable {
+			merged.Status = "update available (multiple installations)"
+		} else {
+			merged.Status = "multiple installations"
+		}
+	}
+	if len(drifts) > 1 {
+		merged.Drift = "unknown"
+		for _, item := range group {
+			if item.Drift == "modified" {
+				merged.Drift = "modified"
+				break
+			}
+		}
+	}
+	if len(revisions) > 1 {
+		merged.Revision = ""
+	}
+	if len(errors) > 0 {
+		values := make([]string, 0, len(errors))
+		for value := range errors {
+			values = append(values, value)
+		}
+		sort.Strings(values)
+		merged.Error = strings.Join(values, "; ")
+	}
+	return merged
 }
 
 func newReportSink(items []skill, state *trackedState) *reportSink {

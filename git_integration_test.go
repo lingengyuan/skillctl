@@ -50,7 +50,7 @@ func TestIntegrationGitLifecycle(t *testing.T) {
 	stderr.Reset()
 	paths := []string{"--path", worktree, "--path", installedRoot}
 	checkArgs := append([]string{"check", "--timeout", "60s"}, paths...)
-	if code := run(checkArgs, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "repo-skill [git-worktree, repository]: update available") || !strings.Contains(stdout.String(), "[skillctl-track-v1, skillctl]: update available") {
+	if code := run(checkArgs, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "repo-skill [git-worktree, repository]: update available") || !strings.Contains(stdout.String(), "tracked-skill [multiple, multiple]: update available (multiple installations)") {
 		t.Fatalf("check failed (%d): stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 
@@ -92,6 +92,14 @@ func TestIntegrationHistoryLifecycle(t *testing.T) {
 	}
 	record := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"python3 /tmp/install-skill-from-github.py --repo test/history --path skills/history-skill"}}]}}` + "\n"
 	if err := os.WriteFile(filepath.Join(sessions, "session.jsonl"), []byte(record), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	codexSessions := filepath.Join(home, ".codex", "sessions")
+	if err := os.MkdirAll(codexSessions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	codexRecord := `{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const r = await tools.shell_command({command:\"python3 /tmp/install-skill-from-github.py --repo test/history --path skills/history-skill\"}); text(r)"}}` + "\n"
+	if err := os.WriteFile(filepath.Join(codexSessions, "session.jsonl"), []byte(codexRecord), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
