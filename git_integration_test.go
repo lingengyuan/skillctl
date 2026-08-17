@@ -50,7 +50,7 @@ func TestIntegrationGitLifecycle(t *testing.T) {
 	stderr.Reset()
 	paths := []string{"--path", worktree, "--path", installedRoot}
 	checkArgs := append([]string{"check", "--timeout", "60s"}, paths...)
-	if code := run(checkArgs, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "repo-skill [git-worktree, repository]: update available") || !strings.Contains(stdout.String(), "[skillctl-track-v1, skillctl]: update available") {
+	if code := run(checkArgs, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "repo-skill [git-worktree, repository]: update available") || !strings.Contains(stdout.String(), "tracked-skill [multiple, multiple]: update available (multiple installations)") {
 		t.Fatalf("check failed (%d): stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 
