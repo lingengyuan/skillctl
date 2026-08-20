@@ -10,25 +10,77 @@ import (
 // report is deliberately a value object: rendering does not need to know how
 // an adapter discovered ownership.
 type report struct {
-	Identity        string   `json:"identity"`
-	Path            string   `json:"path"`
-	Aliases         []string `json:"aliases,omitempty"`
-	ScanRoot        string   `json:"scanRoot"`
-	Host            string   `json:"host"`
-	Scope           string   `json:"scope"`
-	Provider        string   `json:"provider"`
-	Owner           string   `json:"owner"`
-	Evidence        []string `json:"evidence"`
-	Revision        string   `json:"revision,omitempty"`
-	Drift           string   `json:"drift"`
-	Status          string   `json:"status"`
-	UpdateAvailable bool     `json:"updateAvailable"`
-	Executor        string   `json:"executor"`
-	Error           string   `json:"error,omitempty"`
+	SchemaVersion   int                  `json:"schemaVersion"`
+	Identity        string               `json:"identity"`
+	Path            string               `json:"path"`
+	Aliases         []string             `json:"aliases,omitempty"`
+	ScanRoot        string               `json:"scanRoot"`
+	Host            string               `json:"host"`
+	Scope           string               `json:"scope"`
+	Provider        string               `json:"provider"`
+	Owner           string               `json:"owner"`
+	Evidence        []string             `json:"evidence"`
+	Revision        string               `json:"revision,omitempty"`
+	Drift           string               `json:"drift"`
+	State           string               `json:"state"`
+	ReasonCode      string               `json:"reasonCode,omitempty"`
+	Status          string               `json:"status"`
+	UpdateAvailable bool                 `json:"updateAvailable"`
+	Executor        string               `json:"executor"`
+	Error           string               `json:"error,omitempty"`
+	Installations   []reportInstallation `json:"installations,omitempty"`
+}
+
+type reportInstallation struct {
+	Path            string `json:"path"`
+	Host            string `json:"host"`
+	Scope           string `json:"scope"`
+	Provider        string `json:"provider"`
+	Owner           string `json:"owner"`
+	Revision        string `json:"revision,omitempty"`
+	Drift           string `json:"drift"`
+	Status          string `json:"status"`
+	UpdateAvailable bool   `json:"updateAvailable"`
+	Executor        string `json:"executor"`
+	Error           string `json:"error,omitempty"`
 }
 
 func reportFor(item skill, provider, owner string, evidence []string, drift, status string, available bool, executor, err string) report {
-	return report{Identity: item.Name, Path: item.Path, Aliases: item.Aliases, ScanRoot: item.ScanRoot, Host: item.Host, Scope: item.Scope, Provider: provider, Owner: owner, Evidence: evidence, Drift: drift, Status: status, UpdateAvailable: available, Executor: executor, Error: err}
+	return report{SchemaVersion: 1, Identity: item.Name, Path: item.Path, Aliases: item.Aliases, ScanRoot: item.ScanRoot, Host: item.Host, Scope: item.Scope, Provider: provider, Owner: owner, Evidence: evidence, Drift: drift, Status: status, UpdateAvailable: available, Executor: executor, Error: err}
+}
+
+func finalizeReports(reports []report) []report {
+	for i := range reports {
+		reports[i].SchemaVersion = 1
+		reports[i].State, reports[i].ReasonCode = classifyReport(reports[i])
+	}
+	return reports
+}
+
+func classifyReport(r report) (string, string) {
+	status := strings.ToLower(r.Status)
+	switch {
+	case r.Error != "" || strings.HasPrefix(status, "failed"):
+		return "error", "provider_error"
+	case strings.HasPrefix(status, "broken"):
+		return "broken", "broken_link"
+	case strings.Contains(status, "ambiguous"):
+		return "ambiguous", "ambiguous_provenance"
+	case strings.Contains(status, "pinned"):
+		return "pinned", "pinned_revision"
+	case r.Drift == "modified" || strings.Contains(status, "modified") || strings.Contains(status, "dirty"):
+		return "modified", "local_changes"
+	case r.UpdateAvailable || strings.HasPrefix(status, "update available"):
+		return "outdated", "upstream_changed"
+	case strings.Contains(status, "local/untracked"):
+		return "untracked", "missing_update_source"
+	case strings.Contains(status, "diverged") || strings.Contains(status, "ahead by") || strings.Contains(status, "detached head") || strings.Contains(status, "no upstream"):
+		return "blocked", "git_state_blocks_update"
+	case status == "up to date" || status == "updated" || strings.HasPrefix(status, "managed by") || status == "managed from local path":
+		return "current", ""
+	default:
+		return "unknown", ""
+	}
 }
 
 func printReport(w io.Writer, r report, showPath bool) {
@@ -78,6 +130,7 @@ func mergeReportGroup(group []report) report {
 	}
 
 	merged.Aliases = nil
+	merged.Installations = make([]reportInstallation, 0, len(group))
 	providers := map[string]bool{}
 	owners := map[string]bool{}
 	executors := map[string]bool{}
@@ -95,6 +148,19 @@ func mergeReportGroup(group []report) report {
 		if item.Error != "" {
 			errors[item.Error] = true
 		}
+		merged.Installations = append(merged.Installations, reportInstallation{
+			Path:            item.Path,
+			Host:            item.Host,
+			Scope:           item.Scope,
+			Provider:        item.Provider,
+			Owner:           item.Owner,
+			Revision:        item.Revision,
+			Drift:           item.Drift,
+			Status:          item.Status,
+			UpdateAvailable: item.UpdateAvailable,
+			Executor:        item.Executor,
+			Error:           item.Error,
+		})
 		for _, path := range append([]string{item.Path}, item.Aliases...) {
 			merged.Aliases = appendUnique(merged.Aliases, path)
 		}
@@ -164,6 +230,7 @@ func newReportSink(items []skill, state *trackedState) *reportSink {
 	}
 	return s
 }
+
 func (s *reportSink) markGit(items []skill, root string) {
 	revision, _ := gitOutput(root, "rev-parse", "HEAD")
 	for _, item := range items {
@@ -179,6 +246,7 @@ func (s *reportSink) markGit(items []skill, root string) {
 		}
 	}
 }
+
 func (s *reportSink) failure(item skill, message string) {
 	s.set([]skill{item}, "failed")
 	for i := range s.reports {
@@ -187,7 +255,9 @@ func (s *reportSink) failure(item skill, message string) {
 		}
 	}
 }
+
 func (s *reportSink) Write(p []byte) (int, error) { return len(p), nil }
+
 func (s *reportSink) set(items []skill, message string) {
 	for _, item := range items {
 		for i := range s.reports {

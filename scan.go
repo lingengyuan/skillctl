@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,7 @@ import (
 	"strings"
 )
 
-// skill is one installed instance.  Path is kept as the canonical path for
+// skill is one installed instance. Path is kept as the canonical path for
 // compatibility with the v0.1 explicit-track state.
 type skill struct {
 	Name       string
@@ -25,7 +24,7 @@ type skill struct {
 	LinkTarget string
 }
 
-func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool) {
+func scan(roots []scanRoot, _ bool, stderr io.Writer) ([]skill, bool) {
 	seen := map[string]int{}
 	visitedDirs := map[string]string{}
 	var skills []skill
@@ -34,7 +33,7 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 		root := rootSpec.Path
 		_, err := os.Stat(root)
 		if err != nil {
-			if ignoreMissing && errors.Is(err, os.ErrNotExist) {
+			if !rootSpec.Required && errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 			fmt.Fprintf(stderr, "%s: %v\n", root, err)
@@ -176,52 +175,22 @@ func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(s
 var skillName = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 func readSkill(path string) (string, error) {
-	file, err := os.Open(path)
+	document, err := readSkillDocument(path)
 	if err != nil {
-		return "", fmt.Errorf("read skill: %w", err)
+		return "", err
 	}
-	defer file.Close()
-	scanner := bufio.NewScanner(file)
-	if !scanner.Scan() {
-		if err := scanner.Err(); err != nil {
-			return "", fmt.Errorf("read front matter: %w", err)
-		}
-		return "", errors.New("missing YAML front matter")
+	name := strings.TrimSpace(document.Name)
+	if name == "" {
+		return "", errors.New("missing name")
 	}
-	if scanner.Text() != "---" {
-		return "", errors.New("missing YAML front matter")
+	if len(name) > 64 {
+		return "", errors.New("name exceeds 64 characters")
 	}
-	values := map[string]string{}
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "---" {
-			name := values["name"]
-			if name == "" {
-				return "", errors.New("missing name")
-			}
-			if len(name) > 64 {
-				return "", errors.New("name exceeds 64 characters")
-			}
-			if !skillName.MatchString(name) {
-				return "", fmt.Errorf("invalid name %q: use lowercase letters, numbers, and hyphens", name)
-			}
-			if values["description"] == "" {
-				return "", errors.New("missing description")
-			}
-			return name, nil
-		}
-		key, value, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		value = strings.Trim(strings.TrimSpace(value), `"'`)
-		if key == "name" || key == "description" {
-			values[key] = value
-		}
+	if !skillName.MatchString(name) {
+		return "", fmt.Errorf("invalid name %q: use lowercase letters, numbers, and hyphens", name)
 	}
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("read front matter: %w", err)
+	if strings.TrimSpace(document.Description) == "" {
+		return "", errors.New("missing description")
 	}
-	return "", errors.New("unterminated YAML front matter")
+	return name, nil
 }

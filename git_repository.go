@@ -45,7 +45,7 @@ func processGit(action string, skills []skill, state *trackedState, session *sou
 			continue
 		}
 		relSkill, err := filepath.Rel(root, filepath.Join(item.Path, "SKILL.md"))
-		if err != nil || !within(root, filepath.Join(item.Path, "SKILL.md")) || gitTracks(root, relSkill) == false {
+		if err != nil || !within(root, filepath.Join(item.Path, "SKILL.md")) || !gitTracks(root, relSkill) {
 			copied = append(copied, item)
 			continue
 		}
@@ -184,11 +184,44 @@ func processRepository(ctx context.Context, networkTimeout time.Duration, action
 		printSkills(stderr, repo.Skills, "failed (invalid Git comparison)")
 		return true
 	}
-	decision := decideRepository(action, repo.Allowed, dirtyOutput != "", ahead, behind)
-	if !decision.pull {
+
+	dirty := dirtyOutput != ""
+	if dirty || ahead > 0 || behind == 0 {
+		decision := decideRepository(action, repo.Allowed, dirty, ahead, behind)
 		printSkills(stdout, repo.Skills, decision.message)
 		return false
 	}
+
+	changed, err := repositorySkillChanges(repo.Root, repo.Skills, "HEAD", "@{upstream}")
+	if err != nil {
+		printSkills(stderr, repo.Skills, "failed (compare skill trees: "+oneLine(err.Error())+")")
+		return true
+	}
+	if !anySkillChanged(changed) {
+		printSkills(stdout, repo.Skills, "up to date")
+		return false
+	}
+	if action == "check" {
+		for _, item := range repo.Skills {
+			if changed[canonicalPathKey(item.Path)] {
+				printSkills(stdout, []skill{item}, fmt.Sprintf("update available (behind %d commits)", behind))
+			} else {
+				printSkills(stdout, []skill{item}, "up to date")
+			}
+		}
+		return false
+	}
+	if !repo.Allowed {
+		for _, item := range repo.Skills {
+			if changed[canonicalPathKey(item.Path)] {
+				printSkills(stdout, []skill{item}, "skipped (repository root is outside the scan path)")
+			} else {
+				printSkills(stdout, []skill{item}, "up to date")
+			}
+		}
+		return false
+	}
+
 	oldHead, _ := gitOutput(repo.Root, "rev-parse", "--short", "HEAD")
 	if _, err := gitNetworkOutputWithTimeout(ctx, networkTimeout, repo.Root, "-c", "submodule.recurse=false", "pull", "--ff-only", "--no-rebase", "--recurse-submodules=no"); err != nil {
 		printSkills(stderr, repo.Skills, "failed (git pull: "+oneLine(err.Error())+")")
@@ -199,10 +232,51 @@ func processRepository(ctx context.Context, networkTimeout time.Duration, action
 		printSkills(stderr, repo.Skills, "failed (verify updated HEAD)")
 		return true
 	}
-	if oldHead == newHead {
-		printSkills(stdout, repo.Skills, "up to date")
-	} else {
-		printSkills(stdout, repo.Skills, fmt.Sprintf("updated (%s -> %s)", oldHead, newHead))
+	for _, item := range repo.Skills {
+		if !changed[canonicalPathKey(item.Path)] || oldHead == newHead {
+			printSkills(stdout, []skill{item}, "up to date")
+			continue
+		}
+		printSkills(stdout, []skill{item}, fmt.Sprintf("updated (%s -> %s)", oldHead, newHead))
+	}
+	return false
+}
+
+func repositorySkillChanges(root string, skills []skill, leftRevision, rightRevision string) (map[string]bool, error) {
+	result := make(map[string]bool, len(skills))
+	for _, item := range skills {
+		left, err := gitTreeAtRevision(root, item.Path, leftRevision)
+		if err != nil {
+			return nil, fmt.Errorf("%s at %s: %w", item.Name, leftRevision, err)
+		}
+		right, err := gitTreeAtRevision(root, item.Path, rightRevision)
+		if err != nil {
+			// A missing path upstream means the installed skill was removed or
+			// relocated and must be treated as a material change.
+			result[canonicalPathKey(item.Path)] = true
+			continue
+		}
+		result[canonicalPathKey(item.Path)] = left != right
+	}
+	return result, nil
+}
+
+func gitTreeAtRevision(root, skillPath, revision string) (string, error) {
+	rel, err := filepath.Rel(root, skillPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("skill path is outside repository")
+	}
+	if rel == "." {
+		return gitOutput(root, "rev-parse", revision+"^{tree}")
+	}
+	return gitOutput(root, "rev-parse", revision+":"+filepath.ToSlash(rel))
+}
+
+func anySkillChanged(changed map[string]bool) bool {
+	for _, value := range changed {
+		if value {
+			return true
+		}
 	}
 	return false
 }

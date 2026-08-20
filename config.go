@@ -12,7 +12,8 @@ import (
 )
 
 var defaultConfig = `# Directories are scanned recursively for SKILL.md files.
-# Relative paths are resolved from this file.
+# Relative paths are resolved from this file. Missing roots are skipped unless
+# required = true is set explicitly.
 
 [[roots]]
 path = "~/.agents/skills"
@@ -117,9 +118,10 @@ type config struct {
 }
 
 type scanRoot struct {
-	Path  string `toml:"path"`
-	Host  string `toml:"host"`
-	Scope string `toml:"scope"`
+	Path     string `toml:"path"`
+	Host     string `toml:"host"`
+	Scope    string `toml:"scope"`
+	Required bool   `toml:"required"`
 }
 
 type manifest struct {
@@ -170,7 +172,7 @@ func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, time.Du
 		if err := temp.Close(); err != nil {
 			return nil, nil, nil, 0, false, fmt.Errorf("migrate legacy config: %w", err)
 		}
-		if err := os.Rename(tempName, path); err != nil {
+		if err := replaceFile(tempName, path); err != nil {
 			return nil, nil, nil, 0, false, fmt.Errorf("migrate legacy config: %w", err)
 		}
 		content = []byte(defaultConfig)
@@ -191,8 +193,8 @@ func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, time.Du
 		}
 	}
 	base := filepath.Dir(path)
-	for _, path := range cfg.Paths {
-		cfg.Roots = append(cfg.Roots, scanRoot{Path: path, Host: "legacy", Scope: "user"})
+	for _, legacyPath := range cfg.Paths {
+		cfg.Roots = append(cfg.Roots, scanRoot{Path: legacyPath, Host: "legacy", Scope: "user"})
 	}
 	if len(cfg.Roots) == 0 {
 		return nil, nil, nil, 0, false, fmt.Errorf("invalid config: at least one root is required")
@@ -203,12 +205,22 @@ func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, time.Du
 		}
 		cfg.Roots[i].Path = resolvePath(cfg.Roots[i].Path, base)
 	}
+	if len(cfg.Manifests) == 0 {
+		if lockPath, lockErr := activeVercelLockPath(); lockErr == nil {
+			cfg.Manifests = append(cfg.Manifests, manifest{Kind: "vercel-skills-lock-v3", Path: lockPath, InstallRoot: "~/.agents/skills"})
+		}
+	}
 	for i := range cfg.Manifests {
 		if cfg.Manifests[i].Kind != "vercel-skills-lock-v3" {
 			return nil, nil, nil, 0, false, fmt.Errorf("invalid config: unsupported manifest kind %q", cfg.Manifests[i].Kind)
 		}
 		if cfg.Manifests[i].Path == "" || cfg.Manifests[i].InstallRoot == "" {
 			return nil, nil, nil, 0, false, fmt.Errorf("invalid config: manifests require path and install_root")
+		}
+		if isDefaultVercelLockPath(cfg.Manifests[i].Path) {
+			if lockPath, lockErr := activeVercelLockPath(); lockErr == nil {
+				cfg.Manifests[i].Path = lockPath
+			}
 		}
 		cfg.Manifests[i].Path = resolvePath(cfg.Manifests[i].Path, base)
 		cfg.Manifests[i].InstallRoot = resolvePath(cfg.Manifests[i].InstallRoot, base)
@@ -219,7 +231,16 @@ func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, time.Du
 		}
 		cfg.ManagedRoots[i].Path = resolvePath(cfg.ManagedRoots[i].Path, base)
 	}
-	return cfg.Roots, cfg.Manifests, cfg.ManagedRoots, networkTimeout, string(content) == defaultConfig, nil
+
+	// Missing optional roots are governed by scanRoot.Required. The legacy
+	// boolean is retained in the function signature for compatibility with
+	// existing callers, but no longer depends on byte-for-byte config contents.
+	return cfg.Roots, cfg.Manifests, cfg.ManagedRoots, networkTimeout, false, nil
+}
+
+func isDefaultVercelLockPath(value string) bool {
+	value = filepath.ToSlash(strings.TrimSpace(value))
+	return value == "~/.agents/.skill-lock.json"
 }
 
 func resolvePath(path, base string) string {
