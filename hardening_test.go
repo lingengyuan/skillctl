@@ -108,7 +108,7 @@ func TestMergedReportPreservesInstallationDetails(t *testing.T) {
 	root := t.TempDir()
 	reports := []report{
 		reportFor(skill{Name: "shared", Path: filepath.Join(root, "one"), Host: "codex", Scope: "user"}, "git-worktree", "repository", nil, "clean", "up to date", false, "git-ff-only", ""),
-		reportFor(skil{Name: "shared", Path: filepath.Join(root, "two"), Host: "claude", Scope: "user"}, "skillctl-track-v1", "skillctl", nil, "clean", "update available", true, "staged-replacement", ""),
+		reportFor(skill{Name: "shared", Path: filepath.Join(root, "two"), Host: "claude", Scope: "user"}, "skillctl-track-v1", "skillctl", nil, "clean", "update available", true, "staged-replacement", ""),
 	}
 	merged := finalizeReports(mergeReportsByIdentity(reports))
 	if len(merged) != 1 || len(merged[0].Installations) != 2 {
@@ -158,7 +158,7 @@ install_root = "~/.agents/skills"
 		t.Fatal(err)
 	}
 
-_, manifests, _, _, _, err := loadConfig(configPath)
+	_, manifests, _, _, _, err := loadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,12 +195,28 @@ func TestDoctorFixRemovesStaleTrackedEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var saved tracedState
+	var saved trackedState
 	if err := json.Unmarshal(content, &saved); err != nil {
 		t.Fatal(err)
 	}
 	if len(saved.Skills) != 0 {
 		t.Fatalf("stale source remained on disk: %#v", saved)
+	}
+}
+
+func TestDoctorFixDoesNotReportItsOwnOperationLock(t *testing.T) {
+	setTestHome(t)
+	lock, err := acquireCommandLock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.release()
+
+	findings, _, _ := diagnose(nil, nil, nil, nil, true)
+	for _, finding := range findings {
+		if finding.Code == "active_operation_lock" {
+			t.Fatalf("doctor --fix reported its own lock: %#v", findings)
+		}
 	}
 }
 

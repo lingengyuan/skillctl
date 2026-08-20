@@ -47,7 +47,7 @@ skillctl check --timeout 30s
 skillctl check --path ~/.codex/skills --path ~/.claude/skills
 ```
 
-当不同目录存在同名 skill 旽，`update` 与 `track` 按名称执行会被拒绝，避免一次修改多个不相关来源；只读的 `check`、`list` 与 `doctor` 仍会展示全部安装。可以通过 `--path`、`--host` 或 `--scope` 缩小范围；确实需要操作全部同名安装时，显式增加 `--all-matches`。
+当不同目录存在同名 skill 时，`update` 与 `track` 按名称执行会被拒绝，避免一次修改多个不相关来源；只读的 `check`、`list` 与 `doctor` 仍会展示全部安装。可以通过 `--path`、`--host` 或 `--scope` 缩小范围；确实需要操作全部同名安装时，显式增加 `--all-matches`。
 
 ```sh
 skillctl update --host codex shared-name

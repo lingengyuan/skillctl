@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -34,62 +34,30 @@ var githubRepository = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
 func readGHSkillClaim(item skill) ghSkillClaimResult {
 	filePath := filepath.Join(item.Path, "SKILL.md")
-	file, err := os.Open(filePath)
+	document, err := readSkillDocument(filePath)
 	if err != nil {
+		if errors.Is(err, errMissingFrontMatter) {
+			return ghSkillClaimResult{}
+		}
 		return ghSkillClaimResult{Err: err}
 	}
-	defer file.Close()
-
-	values := map[string]string{}
-	scanner := bufio.NewScanner(file)
-	if !scanner.Scan() || scanner.Text() != "---" {
-		return ghSkillClaimResult{}
-	}
-	inMetadata := false
-	metadataValueIndent := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "---" {
+	found := false
+	for key := range document.Metadata {
+		if strings.HasPrefix(key, "github-") || key == "local-path" {
+			found = true
 			break
 		}
-		trimmed := strings.TrimSpace(line)
-		indent := len(line) - len(strings.TrimLeft(line, " \t"))
-		if indent == 0 {
-			inMetadata = trimmed == "metadata:"
-			metadataValueIndent = 0
-			continue
-		}
-		if !inMetadata || trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		if metadataValueIndent == 0 {
-			metadataValueIndent = indent
-		}
-		if indent != metadataValueIndent {
-			continue
-		}
-		key, value, ok := strings.Cut(trimmed, ":")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		if strings.HasPrefix(key, "github-") || key == "local-path" {
-			values[key] = strings.Trim(strings.TrimSpace(value), `"'`)
-		}
 	}
-	if err := scanner.Err(); err != nil {
-		return ghSkillClaimResult{Err: err}
-	}
-	if len(values) == 0 {
+	if !found {
 		return ghSkillClaimResult{}
 	}
 	claim := ghSkillClaim{
-		Repository: values["github-repo"],
-		Ref:        values["github-ref"],
-		TreeSHA:    values["github-tree-sha"],
-		SkillPath:  values["github-path"],
-		LocalPath:  values["local-path"],
-		Pinned:     strings.EqualFold(values["github-pinned"], "true"),
+		Repository: metadataString(document.Metadata, "github-repo"),
+		Ref:        metadataString(document.Metadata, "github-ref"),
+		TreeSHA:    metadataString(document.Metadata, "github-tree-sha"),
+		SkillPath:  metadataString(document.Metadata, "github-path"),
+		LocalPath:  metadataString(document.Metadata, "local-path"),
+		Pinned:     metadataBool(document.Metadata, "github-pinned"),
 	}
 	if claim.LocalPath != "" && claim.Repository == "" && claim.Ref == "" && claim.TreeSHA == "" && claim.SkillPath == "" {
 		return ghSkillClaimResult{Claim: claim, Found: true}

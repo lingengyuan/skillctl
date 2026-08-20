@@ -14,6 +14,13 @@ func replaceFile(temp, target string) error {
 	if err := os.Rename(temp, target); err == nil {
 		return nil
 	}
+	if info, err := os.Lstat(target); err == nil {
+		if info.IsDir() {
+			return fmt.Errorf("replace file: target is a directory")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 
 	backupFile, err := os.CreateTemp(filepath.Dir(target), ".skillctl-replace-*")
 	if err != nil {
@@ -46,9 +53,9 @@ func replaceFile(temp, target string) error {
 		return err
 	}
 	if movedOriginal {
-		if err := os.Remove(backup); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove replaced file backup: %w", err)
-		}
+		// The replacement is already committed. A leftover backup is safer than
+		// reporting failure and letting callers roll back related state only.
+		_ = os.Remove(backup)
 	}
 	return nil
 }

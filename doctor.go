@@ -130,7 +130,7 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 				} else {
 					add("warning", "stale_operation_lock", "operation lock is older than 24 hours; run doctor --fix to remove it", lockPath, "")
 				}
-			} else {
+			} else if !fix {
 				add("warning", "active_operation_lock", "an update or track operation may already be running", lockPath, "")
 			}
 		}
