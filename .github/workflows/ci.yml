@@ -28,8 +28,37 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Check formatting
+        shell: bash
+        run: |
+          files=$(gofmt -l *.go)
+          if [ -n "$files" ]; then
+            printf 'Files need gofmt:\n%s\n' "$files"
+            exit 1
+          fi
+      - name: Check shell installer syntax
+        if: runner.os != 'Windows'
+        run: sh -n scripts/install.sh
+      - name: Check PowerShell installer syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/install.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "PowerShell installer has syntax errors"
+          }
       - name: Test
         run: go test ./... -count=1 -timeout 30s
+      - name: Race detector
+        if: runner.os == 'Linux'
+        run: go test -race ./... -count=1 -timeout 60s
       - name: Git integration
         run: go test -tags=integration . -run '^TestIntegration' -count=1 -timeout 90s
       - name: Vet

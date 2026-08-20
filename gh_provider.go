@@ -198,12 +198,16 @@ func updateGHSkillProvider(ctx context.Context, session *sourceSession, item ski
 	return ghSkillClaim{}, err
 }
 
+func ghSkillUpdateArgs(request ghSkillUpdateRequest) []string {
+	return []string{"skill", "update", request.Name, "--all", "--dir", filepath.Dir(request.Directory)}
+}
+
 func executeGHSkillUpdater(ctx context.Context, request ghSkillUpdateRequest, progress io.Writer) (string, error) {
 	command, err := exec.LookPath("gh")
 	if err != nil {
 		return "", fmt.Errorf("GitHub CLI was not found")
 	}
-	cmd := exec.CommandContext(ctx, command, "skill", "update", "--all", "--dir", request.Directory)
+	cmd := exec.CommandContext(ctx, command, ghSkillUpdateArgs(request)...)
 	cmd.WaitDelay = time.Second
 	var output bytes.Buffer
 	cmd.Stdout = io.MultiWriter(&output, progress)

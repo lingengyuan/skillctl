@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type trackedEntry struct {
@@ -76,7 +78,7 @@ func (s *trackedState) save() error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tempPath, s.path)
+	return replaceFile(tempPath, s.path)
 }
 
 func (s *trackedState) find(path string) (*trackedEntry, bool) {
@@ -380,8 +382,15 @@ func discoverSourceSkill(cache, name string) (string, error) {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() && entry.Name() == ".git" {
-			return filepath.SkipDir
+		rel, relErr := filepath.Rel(cache, path)
+		if relErr != nil {
+			return relErr
+		}
+		if rel != "." && shouldIgnoreSkillContent(rel) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if entry.IsDir() || entry.Name() != "SKILL.md" {
 			return nil
@@ -416,12 +425,18 @@ func hashDirectory(root string) (string, error) {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() {
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
+			return relErr
+		}
+		if rel != "." && shouldIgnoreSkillContent(rel) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
+		if entry.IsDir() {
+			return nil
 		}
 		paths = append(paths, rel)
 		return nil
@@ -437,7 +452,8 @@ func hashDirectory(root string) (string, error) {
 			return "", err
 		}
 		var content []byte
-		if info.Mode()&os.ModeSymlink != 0 {
+		isSymlink := info.Mode()&os.ModeSymlink != 0
+		if isSymlink {
 			target, err := os.Readlink(path)
 			if err != nil {
 				return "", err
@@ -449,8 +465,8 @@ func hashDirectory(root string) (string, error) {
 				return "", err
 			}
 		}
-		if !strings.ContainsRune(string(content), '\x00') {
-			content = []byte(strings.ReplaceAll(string(content), "\r\n", "\n"))
+		if !isSymlink && utf8.Valid(content) {
+			content = bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
 		}
 		fmt.Fprintf(hash, "%s\x00%d\x00", filepath.ToSlash(rel), len(content))
 		if _, err := hash.Write(content); err != nil {
@@ -513,6 +529,12 @@ func copyDirectory(source, target string) error {
 		rel, err := filepath.Rel(source, path)
 		if err != nil {
 			return err
+		}
+		if rel != "." && shouldIgnoreSkillContent(rel) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		destination := filepath.Join(target, rel)
 		if entry.IsDir() {

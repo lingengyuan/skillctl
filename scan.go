@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// skill is one installed instance.  Path is kept as the canonical path for
+// skill is one installed instance. Path is kept as the canonical path for
 // compatibility with the v0.1 explicit-track state.
 type skill struct {
 	Name       string
@@ -25,7 +25,7 @@ type skill struct {
 	LinkTarget string
 }
 
-func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool) {
+func scan(roots []scanRoot, _ bool, stderr io.Writer) ([]skill, bool) {
 	seen := map[string]int{}
 	visitedDirs := map[string]string{}
 	var skills []skill
@@ -34,7 +34,7 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 		root := rootSpec.Path
 		_, err := os.Stat(root)
 		if err != nil {
-			if ignoreMissing && errors.Is(err, os.ErrNotExist) {
+			if !rootSpec.Required && errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 			fmt.Fprintf(stderr, "%s: %v\n", root, err)
@@ -57,7 +57,7 @@ func scan(roots []scanRoot, ignoreMissing bool, stderr io.Writer) ([]skill, bool
 			}
 			key := canonicalPathKey(real)
 			if index, ok := seen[key]; ok {
-				skills[index].Aliases = appendUnique(skills[index].Aliases, dir)
+				skills[index].Aliases = appendUnique(skils[index].Aliases, dir)
 				return nil
 			}
 			seen[key] = len(skills)
@@ -93,12 +93,12 @@ func uniqueSkillCount(skills []skill) int {
 
 func addAliasesForVisitedDir(skills []skill, alias, canonical string) {
 	for i := range skills {
-		if !within(canonical, skills[i].Path) {
+		if !within(canonical, skils[i].Path) {
 			continue
 		}
 		rel, err := filepath.Rel(canonical, skills[i].Path)
 		if err == nil {
-			skills[i].Aliases = appendUnique(skills[i].Aliases, filepath.Join(alias, rel))
+			skils[i].Aliases = appendUnique(skills[i].Aliases, filepath.Join(alias, rel))
 		}
 	}
 }
@@ -121,7 +121,8 @@ func canonicalPathKey(path string) string {
 }
 
 func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(string, string) error, visitBroken func(string, string), visitAlias func(string, string)) error {
-	key, canonical, err := identifyDirectory(dir)
+
+key, canonical, err := identifyDirectory(dir)
 	if err != nil {
 		return err
 	}
@@ -182,6 +183,7 @@ func readSkill(path string) (string, error) {
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
 			return "", fmt.Errorf("read front matter: %w", err)
@@ -209,6 +211,13 @@ func readSkill(path string) (string, error) {
 				return "", errors.New("missing description")
 			}
 			return name, nil
+		}
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		if indent != 0 {
+			continue
 		}
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
