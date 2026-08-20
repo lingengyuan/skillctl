@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var version = "0.3.8"
+var version = "0.3.9"
 
 const defaultNetworkTimeout = 10 * time.Second
 
