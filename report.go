@@ -29,6 +29,9 @@ type report struct {
 	Executor        string               `json:"executor"`
 	Error           string               `json:"error,omitempty"`
 	Installations   []reportInstallation `json:"installations,omitempty"`
+	FailureGroup    string               `json:"-"`
+	FailureSource   string               `json:"failureSource,omitempty"`
+	FailureStage    string               `json:"failureStage,omitempty"`
 }
 
 type reportInstallation struct {
@@ -49,6 +52,16 @@ func reportFor(item skill, provider, owner string, evidence []string, drift, sta
 	return report{SchemaVersion: 1, Identity: item.Name, Path: item.Path, Aliases: item.Aliases, ScanRoot: item.ScanRoot, Host: item.Host, Scope: item.Scope, Provider: provider, Owner: owner, Evidence: evidence, Drift: drift, Status: status, UpdateAvailable: available, Executor: executor, Error: err}
 }
 
+func attachSourceFailure(r *report, err error) {
+	key, label, stage, ok := sourceErrorDetails(err)
+	if !ok {
+		return
+	}
+	r.FailureGroup = key
+	r.FailureSource = label
+	r.FailureStage = stage
+}
+
 func finalizeReports(reports []report) []report {
 	for i := range reports {
 		reports[i].SchemaVersion = 1
@@ -59,9 +72,19 @@ func finalizeReports(reports []report) []report {
 
 func classifyReport(r report) (string, string) {
 	status := strings.ToLower(r.Status)
+	errorText := strings.ToLower(r.Error)
 	switch {
 	case r.Error != "" || strings.HasPrefix(status, "failed"):
-		return "error", "provider_error"
+		switch {
+		case strings.Contains(errorText, "timeout") || strings.Contains(errorText, "deadline exceeded"):
+			return "error", "network_timeout"
+		case strings.Contains(errorText, "authentication") || strings.Contains(errorText, "permission denied") || strings.Contains(errorText, "could not read username"):
+			return "error", "authentication_failed"
+		case strings.Contains(errorText, "cache"):
+			return "error", "source_cache_error"
+		default:
+			return "error", "provider_error"
+		}
 	case strings.HasPrefix(status, "broken"):
 		return "broken", "broken_link"
 	case strings.Contains(status, "ambiguous"):
@@ -74,7 +97,7 @@ func classifyReport(r report) (string, string) {
 		return "outdated", "upstream_changed"
 	case strings.Contains(status, "local/untracked"):
 		return "untracked", "missing_update_source"
-	case strings.Contains(status, "diverged") || strings.Contains(status, "ahead by") || strings.Contains(status, "detached head") || strings.Contains(status, "no upstream"):
+	case strings.Contains(status, "diverged") || strings.Contains(status, "ahead by") || strings.Contains(status, "detached head") || strings.Contains(status, "no upstream") || strings.Contains(status, "blocked"):
 		return "blocked", "git_state_blocks_update"
 	case status == "up to date" || status == "updated" || strings.HasPrefix(status, "managed by") || status == "managed from local path":
 		return "current", ""
@@ -85,7 +108,7 @@ func classifyReport(r report) (string, string) {
 
 func printReport(w io.Writer, r report, showPath bool) {
 	name := r.Identity
-	if showPath || r.Status == "ambiguous provenance" || strings.HasPrefix(r.Status, "broken") || r.Error != "" {
+	if r.Path != "" && (showPath || r.Status == "ambiguous provenance" || strings.HasPrefix(r.Status, "broken") || r.Error != "") {
 		name += " [" + r.Path + "]"
 	}
 	status := r.Status
@@ -93,6 +116,116 @@ func printReport(w io.Writer, r report, showPath bool) {
 		status += " (" + r.Error + ")"
 	}
 	fmt.Fprintf(w, "%s [%s, %s]: %s\n", name, r.Provider, r.Owner, status)
+	if !reportNeedsInstallationDetails(r) {
+		return
+	}
+	for _, installation := range r.Installations {
+		installationStatus := installation.Status
+		if installation.Error != "" && !strings.Contains(installationStatus, installation.Error) {
+			installationStatus += " (" + installation.Error + ")"
+		}
+		fmt.Fprintf(w, "  %s [%s, %s]: %s\n", installation.Path, installation.Provider, installation.Owner, installationStatus)
+	}
+}
+
+func reportNeedsInstallationDetails(r report) bool {
+	if len(r.Installations) < 2 {
+		return false
+	}
+	first := r.Installations[0]
+	for _, installation := range r.Installations[1:] {
+		if installation.Provider != first.Provider || installation.Owner != first.Owner || installation.Status != first.Status || installation.Error != first.Error || installation.Drift != first.Drift || installation.Revision != first.Revision {
+			return true
+		}
+	}
+	return false
+}
+
+// printReports collapses one shared source failure into one diagnostic while
+// retaining per-installation detail in JSON. This prevents a repository outage
+// from flooding text output with the same timeout for every skill it contains.
+func printReports(w io.Writer, reports []report) {
+	groups := map[string][]report{}
+	for _, item := range reports {
+		if item.FailureGroup != "" {
+			groups[item.FailureGroup] = append(groups[item.FailureGroup], item)
+		}
+	}
+	printed := map[string]bool{}
+	for _, item := range reports {
+		group := groups[item.FailureGroup]
+		if item.FailureGroup == "" || len(group) < 2 {
+			printReport(w, item, false)
+			continue
+		}
+		if printed[item.FailureGroup] {
+			continue
+		}
+		printed[item.FailureGroup] = true
+		names := make([]string, 0, len(group))
+		for _, affected := range group {
+			names = append(names, affected.Identity)
+		}
+		sort.Strings(names)
+		source := item.FailureSource
+		if source == "" {
+			source = "remote source"
+		}
+		stage := ""
+		if item.FailureStage != "" {
+			stage = " during " + item.FailureStage
+		}
+		fmt.Fprintf(w, "Remote source %s failed%s: %s\n", source, stage, item.Error)
+		fmt.Fprintf(w, "  Affected skills (%d): %s\n", len(names), strings.Join(names, ", "))
+	}
+}
+
+type reportSummary struct {
+	Current        int
+	Updates        int
+	Modified       int
+	Untracked      int
+	Blocked        int
+	Errors         int
+	Unknown        int
+	SourceFailures int
+}
+
+func summarizeReports(reports []report) reportSummary {
+	var summary reportSummary
+	failureGroups := map[string]bool{}
+	for _, item := range reports {
+		switch item.State {
+		case "current", "pinned":
+			summary.Current++
+		case "outdated":
+			summary.Updates++
+		case "modified":
+			summary.Modified++
+		case "untracked":
+			summary.Untracked++
+		case "blocked", "ambiguous", "broken":
+			summary.Blocked++
+		case "error":
+			summary.Errors++
+		default:
+			summary.Unknown++
+		}
+		if item.FailureGroup != "" {
+			failureGroups[item.FailureGroup] = true
+		}
+	}
+	summary.SourceFailures = len(failureGroups)
+	return summary
+}
+
+func printReportSummary(w io.Writer, reports []report) {
+	summary := summarizeReports(reports)
+	fmt.Fprintf(w, "Summary: %d current, %d updates, %d modified, %d untracked, %d blocked, %d errors, %d unknown", summary.Current, summary.Updates, summary.Modified, summary.Untracked, summary.Blocked, summary.Errors, summary.Unknown)
+	if summary.SourceFailures > 0 {
+		fmt.Fprintf(w, " (%d remote source failures)", summary.SourceFailures)
+	}
+	fmt.Fprintln(w, ".")
 }
 
 type reportSink struct {
@@ -129,24 +262,45 @@ func mergeReportGroup(group []report) report {
 		return merged
 	}
 
+	// A logical report spanning distinct installations has no single truthful
+	// path. Paths remain available in aliases/installations instead of borrowing
+	// the first path and accidentally attaching another installation's error.
+	merged.Path = ""
+	merged.ScanRoot = ""
 	merged.Aliases = nil
 	merged.Installations = make([]reportInstallation, 0, len(group))
 	providers := map[string]bool{}
 	owners := map[string]bool{}
+	hosts := map[string]bool{}
+	scopes := map[string]bool{}
 	executors := map[string]bool{}
 	statuses := map[string]bool{}
 	drifts := map[string]bool{}
 	revisions := map[string]bool{}
 	errors := map[string]bool{}
+	failureGroups := map[string]bool{}
+	failureSources := map[string]bool{}
+	failureStages := map[string]bool{}
 	for _, item := range group {
 		providers[item.Provider] = true
 		owners[item.Owner] = true
+		hosts[item.Host] = true
+		scopes[item.Scope] = true
 		executors[item.Executor] = true
 		statuses[item.Status] = true
 		drifts[item.Drift] = true
 		revisions[item.Revision] = true
 		if item.Error != "" {
 			errors[item.Error] = true
+		}
+		if item.FailureGroup != "" {
+			failureGroups[item.FailureGroup] = true
+		}
+		if item.FailureSource != "" {
+			failureSources[item.FailureSource] = true
+		}
+		if item.FailureStage != "" {
+			failureStages[item.FailureStage] = true
 		}
 		merged.Installations = append(merged.Installations, reportInstallation{
 			Path:            item.Path,
@@ -175,6 +329,12 @@ func mergeReportGroup(group []report) report {
 	}
 	if len(owners) > 1 {
 		merged.Owner = "multiple"
+	}
+	if len(hosts) > 1 {
+		merged.Host = "multiple"
+	}
+	if len(scopes) > 1 {
+		merged.Scope = "multiple"
 	}
 	if len(executors) > 1 {
 		merged.Executor = "report-only"
@@ -205,6 +365,27 @@ func mergeReportGroup(group []report) report {
 		}
 		sort.Strings(values)
 		merged.Error = strings.Join(values, "; ")
+	}
+	if len(failureGroups) == 1 {
+		for value := range failureGroups {
+			merged.FailureGroup = value
+		}
+	} else {
+		merged.FailureGroup = ""
+	}
+	if len(failureSources) == 1 {
+		for value := range failureSources {
+			merged.FailureSource = value
+		}
+	} else {
+		merged.FailureSource = ""
+	}
+	if len(failureStages) == 1 {
+		for value := range failureStages {
+			merged.FailureStage = value
+		}
+	} else {
+		merged.FailureStage = ""
 	}
 	return merged
 }
