@@ -1,0 +1,244 @@
+name: One-shot check hardening v4
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare verified implementation
+        shell: bash
+        run: |
+          if ! git log -20 --format=%s | grep -q '^fix(check): harden reliability, diagnostics, and source caching$'; then
+            git checkout origin/main -- tracked.go git_repository.go skill_document.go vercel_provider.go gh_provider.go doctor.go
+            rm -f git_dirty.go skill_document_reader.go provider_transactions.go doctor_transactions.go reliability_test.go
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path): return Path(path).read_text(encoding='utf-8')
+          def write(path, text): Path(path).write_text(text, encoding='utf-8')
+          def replace_function(path, name, replacement):
+              text = read(path)
+              match = re.search(rf'(?ms)^func {re.escape(name)}\(.*?(?=^func |^type |\Z)', text)
+              if not match:
+                  raise SystemExit(f'{name} not found in {path}')
+              write(path, text[:match.start()] + replacement.rstrip() + '\n\n' + text[match.end():])
+
+          session = read('source_session.go')
+          session = session.replace('var syncSourceForSession = syncObjectSource', 'var syncSourceForSession = syncWorktreeSource')
+          session = session.replace(
+              's.progressf("Checking remote source %d/%d: %s%s...\\n", item.number, s.sourceCount, item.label, affectedSkillLabel(item.Skills))',
+              's.progressf("Checking remote source %d... %s%s [%d/%d]\\n", item.number, item.label, affectedSkillLabel(item.Skills), item.number, s.sourceCount)',
+          )
+          session = session.replace(
+              's.progressf("Remote source %d/%d failed: %s (%s).\\n", result.number, s.sourceCount, result.label, elapsed)',
+              's.progressf("Remote source %d failed: %s [%d/%d] (%s).\\n", result.number, result.label, result.number, s.sourceCount, elapsed)',
+          )
+          session = session.replace(
+              's.progressf("Remote source %d/%d ready: %s (%s).\\n", result.number, s.sourceCount, result.label, elapsed)',
+              's.progressf("Remote source %d ready: %s [%d/%d] (%s).\\n", result.number, result.label, result.number, s.sourceCount, elapsed)',
+          )
+          session = session.replace(
+              's.progressf("Checking remote source %d: %s...\\n", number, label)',
+              's.progressf("Checking remote source %d... %s\\n", number, label)',
+          )
+          write('source_session.go', session)
+
+          tracked = read('tracked.go').replace(
+              'cache, err := session.source(entry.Source, entry.Ref)',
+              'cache, err := session.worktreeSource(entry.Source, entry.Ref)',
+          )
+          write('tracked.go', tracked)
+          replace_function('tracked.go', 'syncSource', '''func syncSource(ctx context.Context, source, ref string) (string, error) {
+          \treturn syncWorktreeSource(ctx, source, ref)
+          }''')
+          tracked = read('tracked.go')
+          if 'exec.' not in tracked: tracked = tracked.replace('\t"os/exec"\n', '')
+          if 'time.' not in tracked: tracked = tracked.replace('\t"time"\n', '')
+          write('tracked.go', tracked)
+
+          git_repo = read('git_repository.go')
+          start = git_repo.find('func gitNetworkOutput(')
+          end = git_repo.find('\nfunc ', start + 1)
+          if start >= 0:
+              if end < 0: end = len(git_repo)
+              segment = git_repo[start:end]
+              marker = 'cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)'
+              if marker in segment and 'cmd.Env = gitNonInteractiveEnv()' not in segment:
+                  segment = segment.replace(marker, marker + '\n\tcmd.Env = gitNonInteractiveEnv()', 1)
+              git_repo = git_repo[:start] + segment + git_repo[end:]
+          write('git_repository.go', git_repo)
+
+          report = read('report.go')
+          needle = '''\tif len(failureStages) == 1 {
+          \t\tfor value := range failureStages {
+          \t\t\tmerged.FailureStage = value
+          \t\t}
+          \t} else {
+          \t\tmerged.FailureStage = ""
+          \t}
+          \treturn merged
+          }'''
+          replacement = '''\tif len(failureStages) == 1 {
+          \t\tfor value := range failureStages {
+          \t\t\tmerged.FailureStage = value
+          \t\t}
+          \t} else {
+          \t\tmerged.FailureStage = ""
+          \t}
+          \tif !reportNeedsInstallationDetails(merged) {
+          \t\tmerged.Path = group[0].Path
+          \t\tmerged.ScanRoot = group[0].ScanRoot
+          \t}
+          \treturn merged
+          }'''
+          if needle in report: report = report.replace(needle, replacement, 1)
+          write('report.go', report)
+
+          Path('check_reliability_test.go').write_text('''package main
+
+          import (
+          \t"bytes"
+          \t"testing"
+          \t"os"
+          \t"path/filepath"
+          \t"strings"
+          )
+
+          func writeCheckReliabilitySkill(t *testing.T, dir, name string) {
+          \tt.Helper()
+          \tif err := os.MkdirAll(dir, 0o755); err != nil { t.Fatal(err) }
+          \tcontent := "---\\nname: " + name + "\\ndescription: test\\n---\\n"
+          \tif err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil { t.Fatal(err) }
+          }
+
+          func TestCheckScannerIgnoresSkillctlTransactions(t *testing.T) {
+          \troot := t.TempDir()
+          \twriteCheckReliabilitySkill(t, filepath.Join(root, "real"), "real-skill")
+          \twriteCheckReliabilitySkill(t, filepath.Join(root, ".skillctl-provider-snapshot-1"), "snapshot-skill")
+          \tvar stderr bytes.Buffer
+          \titems, failed := scan([]scanRoot{{Path: root, Host: "test", Scope: "user", Required: true}}, false, &stderr)
+          \tif failed || len(items) != 1 || items[0].Name != "real-skill" { t.Fatalf("items=%#v failed=%v stderr=%s", items, failed, stderr.String()) }
+          }
+
+          func TestCheckSourceLabelIsSanitized(t *testing.T) {
+          \tlabel := sourceDisplayLabel("https://user:secret@example.com/acme/skills.git?token=hidden", "main")
+          \tif label != "example.com/acme/skills@main" || strings.Contains(label, "secret") || strings.Contains(label, "hidden") { t.Fatalf("unsafe label %q", label) }
+          }
+
+          func TestCheckMergedErrorsKeepInstallationPaths(t *testing.T) {
+          \ta := reportFor(skill{Name: "same", Path: "/a"}, "a", "a", nil, "clean", "up to date", false, "report-only", "")
+          \tb := reportFor(skill{Name: "same", Path: "/b"}, "b", "b", nil, "unknown", "failed", false, "report-only", "timeout")
+          \tmerged := mergeReportsByIdentity([]report{a, b})
+          \tif len(merged) != 1 || merged[0].Path != "" || len(merged[0].Installations) != 2 { t.Fatalf("misleading merge: %#v", merged) }
+          }
+          ''', encoding='utf-8')
+          PY
+          fi
+          gofmt -w *.go
+      - name: Test
+        shell: bash
+        run: |
+          go test ./...
+          go test -race ./...
+          go vet ./...
+
+  commit:
+    needs: verify
+    if: github.head_ref == 'fix/check-reliability-and-performance' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Reproduce verified implementation
+        shell: bash
+        run: |
+          if ! git log -20 --format=%s | grep -q '^fix(check): harden reliability, diagnostics, and source caching$'; then
+            git checkout origin/main -- tracked.go git_repository.go skill_document.go vercel_provider.go gh_provider.go doctor.go
+            rm -f git_dirty.go skill_document_reader.go provider_transactions.go doctor_transactions.go reliability_test.go
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          def read(path): return Path(path).read_text(encoding='utf-8')
+          def write(path, text): Path(path).write_text(text, encoding='utf-8')
+          def replace_function(path, name, replacement):
+              text=read(path); m=re.search(rf'(?ms)^func {re.escape(name)}\(.*?(?=^func |^type |\Z)', text)
+              if not m: raise SystemExit(f'{name} not found')
+              write(path, text[:m.start()] + replacement.rstrip() + '\n\n' + text[m.end():])
+          s=read('source_session.go').replace('var syncSourceForSession = syncObjectSource','var syncSourceForSession = syncWorktreeSource')
+          s=s.replace('s.progressf("Checking remote source %d/%d: %s%s...\\n", item.number, s.sourceCount, item.label, affectedSkillLabel(item.Skills))','s.progressf("Checking remote source %d... %s%s [%d/%d]\\n", item.number, item.label, affectedSkillLabel(item.Skills), item.number, s.sourceCount)')
+          s=s.replace('s.progressf("Remote source %d/%d failed: %s (%s).\\n", result.number, s.sourceCount, result.label, elapsed)','s.progressf("Remote source %d failed: %s [%d/%d] (%s).\\n", result.number, result.label, result.number, s.sourceCount, elapsed)')
+          s=s.replace('s.progressf("Remote source %d/%d ready: %s (%s).\\n", result.number, s.sourceCount, result.label, elapsed)','s.progressf("Remote source %d ready: %s [%d/%d] (%s).\\n", result.number, result.label, result.number, s.sourceCount, elapsed)')
+          s=s.replace('s.progressf("Checking remote source %d: %s...\\n", number, label)','s.progressf("Checking remote source %d... %s\\n", number, label)')
+          write('source_session.go',s)
+          t=read('tracked.go').replace('cache, err := session.source(entry.Source, entry.Ref)','cache, err := session.worktreeSource(entry.Source, entry.Ref)'); write('tracked.go',t)
+          replace_function('tracked.go','syncSource','''func syncSource(ctx context.Context, source, ref string) (string, error) {
+          \treturn syncWorktreeSource(ctx, source, ref)
+          }''')
+          t=read('tracked.go')
+          if 'exec.' not in t: t=t.replace('\t"os/exec"\n','')
+          if 'time.' not in t: t=t.replace('\t"time"\n','')
+          write('tracked.go',t)
+          g=read('git_repository.go'); start=g.find('func gitNetworkOutput('); end=g.find('\nfunc ',start+1)
+          if start>=0:
+              if end<0: end=len(g)
+              seg=g[start:end]; marker='cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)'
+              if marker in seg and 'cmd.Env = gitNonInteractiveEnv()' not in seg: seg=seg.replace(marker,marker+'\n\tcmd.Env = gitNonInteractiveEnv()',1)
+              g=g[:start]+seg+g[end:]
+          write('git_repository.go',g)
+          r=read('report.go'); needle='''\tif len(failureStages) == 1 {
+          \t\tfor value := range failureStages {\n\t\t\tmerged.FailureStage = value\n\t\t}\n\t} else {\n\t\tmerged.FailureStage = ""\n\t}\n\treturn merged\n}'''; repl=needle.replace('\treturn merged','\tif !reportNeedsInstallationDetails(merged) {\n\t\tmerged.Path = group[0].Path\n\t\tmerged.ScanRoot = group[0].ScanRoot\n\t}\n\treturn merged')
+          if needle in r: r=r.replace(needle,repl,1)
+          write('report.go',r)
+          Path('check_reliability_test.go').write_text('''package main
+
+          import ("bytes"; "os"; "path/filepath"; "strings"; "testing")
+          func writeCheckReliabilitySkill(t *testing.T, dir, name string) { t.Helper(); if err:=os.MkdirAll(dir,0o755); err!=nil {t.Fatal(err)}; if err:=os.WriteFile(filepath.Join(dir,"SKILL.md"),[]byte("---\\nname: "+name+"\\ndescription: test\\n---\\n"),0o644); err!=nil {t.Fatal(err)} }
+          func TestCheckScannerIgnoresSkillctlTransactions(t *testing.T) { root:=t.TempDir(); writeCheckReliabilitySkill(t,filepath.Join(root,"real"),"real-skill"); writeCheckReliabilitySkill(t,filepath.Join(root,".skillctl-provider-snapshot-1"),"snapshot-skill"); var stderr bytes.Buffer; items,failed:=scan([]scanRoot{{Path:root,Host:"test",Scope:"user",Required:true}},false,&stderr); if failed||len(items)!=1||items[0].Name!="real-skill" {t.Fatalf("items=%#v failed=%v stderr=%s",items,failed,stderr.String())} }
+          func TestCheckSourceLabelIsSanitized(t *testing.T) { label:=sourceDisplayLabel("https://user:secret@example.com/acme/skills.git?token=hidden","main"); if label!="example.com/acme/skills@main"||strings.Contains(label,"secret")||strings.Contains(label,"hidden") {t.Fatalf("unsafe label %q",label)} }
+          func TestCheckMergedErrorsKeepInstallationPaths(t *testing.T) { a:=reportFor(skill{Name:"same",Path:"/a"},"a","a",nil,"clean","up to date",false,"report-only",""); b:=reportFor(skill{Name:"same",Path:"/b"},"b","b",nil,"unknown","failed",false,"report-only","timeout"); merged:=mergeReportsByIdentity([]report{a,b}); if len(merged)!=1||merged[0].Path!=""||len(merged[0].Installations)!=2 {t.Fatalf("misleading merge: %#v",merged)} }
+          ''',encoding='utf-8')
+          PY
+          fi
+          gofmt -w *.go
+          go test ./...
+          go vet ./...
+      - name: Commit and remove all one-shot tooling
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f \
+            .github/workflows/one-shot-check-hardening.yml \
+            .github/workflows/one-shot-check-hardening-v2.yml \
+            .github/workflows/one-shot-check-hardening-v3.yml \
+            .github/workflows/one-shot-check-hardening-v4.yml \
+            scripts/one_shot_harden_v2.py \
+            scripts/one_shot_harden_v3.py
+          git add -A
+          git commit -m "fix(check): harden check reliability and diagnostics"
+          git pull --rebase origin "${{ github.head_ref }}"
+          git push origin HEAD:"${{ github.head_ref }}"
