@@ -239,7 +239,7 @@ func (s *sourceSession) syncRequest(request sourceRequest) (string, error) {
 	if err == nil {
 		return cache, nil
 	}
-	if operationCtx.Err() != nil && !errors.Is(err, operationCtx.Err()) {
+	if operationCtx.Err() != nil {
 		err = fmt.Errorf("network timeout: %w", operationCtx.Err())
 	}
 	return "", &sourceSyncError{
@@ -266,6 +266,20 @@ func (s *sourceSession) sourceWithMode(source, ref string, worktree bool) (strin
 	}
 	if err, ok := s.sourceErrors[key]; ok {
 		return "", err
+	}
+	if !worktree {
+		worktreeKey := sourceModeKey(source, ref, true)
+		if cache, ok := s.caches[worktreeKey]; ok {
+			return cache, nil
+		}
+		if err, ok := s.sourceErrors[worktreeKey]; ok {
+			return "", err
+		}
+		// Compatibility for command-scoped fixtures and callers created before
+		// object/worktree cache modes were split.
+		if cache, ok := s.caches[sourceKey(source, ref)]; ok {
+			return cache, nil
+		}
 	}
 	s.sourceCount++
 	number := s.sourceCount
