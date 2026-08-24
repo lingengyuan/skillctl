@@ -31,6 +31,9 @@ func scan(roots []scanRoot, _ bool, stderr io.Writer) ([]skill, bool) {
 	failed := false
 	for _, rootSpec := range roots {
 		root := rootSpec.Path
+		if shouldIgnoreScanEntry(filepath.Base(filepath.Clean(root))) {
+			continue
+		}
 		_, err := os.Stat(root)
 		if err != nil {
 			if !rootSpec.Required && errors.Is(err, os.ErrNotExist) {
@@ -47,21 +50,21 @@ func scan(roots []scanRoot, _ bool, stderr io.Writer) ([]skill, bool) {
 		if absolute, absErr := filepath.Abs(realRoot); absErr == nil {
 			realRoot = absolute
 		}
-		err = walkFollowingLinks(root, visitedDirs, func(path, real string) error {
+		err = walkFollowingLinks(root, visitedDirs, func(path, real string) (bool, error) {
 			dir := filepath.Dir(path)
 			name, err := readSkill(path)
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: skipped (%v)\n", path, err)
-				return nil
+				return false, nil
 			}
 			key := canonicalPathKey(real)
 			if index, ok := seen[key]; ok {
 				skills[index].Aliases = appendUnique(skills[index].Aliases, dir)
-				return nil
+				return true, nil
 			}
 			seen[key] = len(skills)
 			skills = append(skills, skill{Name: name, Path: real, Aliases: []string{dir}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope})
-			return nil
+			return true, nil
 		}, func(path, target string) {
 			name := filepath.Base(path)
 			skills = append(skills, skill{Name: name, Path: path, Aliases: []string{path}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope, Broken: true, LinkTarget: target})
@@ -119,7 +122,15 @@ func canonicalPathKey(path string) string {
 	return clean
 }
 
-func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(string, string) error, visitBroken func(string, string), visitAlias func(string, string)) error {
+func shouldIgnoreScanEntry(name string) bool {
+	return shouldIgnoreSkillContent(name)
+}
+
+// walkFollowingLinks finds the nearest skill roots while following directory
+// links safely. Once a valid SKILL.md is found, its content directory is not
+// traversed again: references, assets, node_modules, and other skill payloads
+// cannot contain separate installations from the scanner's point of view.
+func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(string, string) (bool, error), visitBroken func(string, string), visitAlias func(string, string)) error {
 	key, canonical, err := identifyDirectory(dir)
 	if err != nil {
 		return err
@@ -133,14 +144,17 @@ func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(s
 	if err != nil {
 		return err
 	}
+
+	// Inspect the marker before descending so a large installed skill is treated
+	// as one unit instead of an additional recursive search root.
 	for _, entry := range entries {
-		if entry.Name() == ".git" {
+		if entry.Name() != "SKILL.md" || shouldIgnoreScanEntry(entry.Name()) {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		info, err := os.Stat(path)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			if errors.Is(statErr, os.ErrNotExist) {
 				target := ""
 				if link, linkErr := os.Readlink(path); linkErr == nil {
 					target = link
@@ -151,22 +165,49 @@ func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(s
 				visitBroken(path, target)
 				continue
 			}
-			return err
+			return statErr
 		}
 		if info.IsDir() {
-			if err := walkFollowingLinks(path, visited, visitSkill, visitBroken, visitAlias); err != nil {
-				if errors.Is(err, os.ErrNotExist) {
-					visitBroken(path, "")
-					continue
-				}
-				return err
-			}
 			continue
 		}
-		if entry.Name() == "SKILL.md" {
-			if err := visitSkill(path, canonical); err != nil {
-				return err
+		found, visitErr := visitSkill(path, canonical)
+		if visitErr != nil {
+			return visitErr
+		}
+		if found {
+			return nil
+		}
+	}
+
+	for _, entry := range entries {
+		if shouldIgnoreScanEntry(entry.Name()) || entry.Name() == "SKILL.md" {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			if errors.Is(statErr, os.ErrNotExist) {
+				target := ""
+				if link, linkErr := os.Readlink(path); linkErr == nil {
+					target = link
+					if !filepath.IsAbs(target) {
+						target = filepath.Join(dir, target)
+					}
+				}
+				visitBroken(path, target)
+				continue
 			}
+			return statErr
+		}
+		if !info.IsDir() {
+			continue
+		}
+		if err := walkFollowingLinks(path, visited, visitSkill, visitBroken, visitAlias); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				visitBroken(path, "")
+				continue
+			}
+			return err
 		}
 	}
 	return nil
