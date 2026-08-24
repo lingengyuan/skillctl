@@ -23,13 +23,13 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			continue
 		}
 		if claims.hasVercel && claims.vercel.Entry.SourceURL != "" && claims.vercel.Entry.SkillPath != "" && claims.vercel.Entry.SkillFolderHash != "" && (claims.vercel.Entry.SourceType == "github" || claims.vercel.Entry.SourceType == "git") {
-			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.vercel.Entry.SourceURL, Ref: claims.vercel.Entry.Ref})
+			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.vercel.Entry.SourceURL, Ref: claims.vercel.Entry.Ref, Skills: []string{item.Name}})
 		}
 		if claims.hasTracked {
-			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.tracked.Source, Ref: claims.tracked.Ref})
+			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.tracked.Source, Ref: claims.tracked.Ref, Skills: []string{item.Name}, Worktree: true})
 		}
 		if claims.gh.Found && claims.gh.Err == nil && claims.gh.Claim.Repository != "" && !claims.gh.Claim.Pinned {
-			sourceRequests = append(sourceRequests, sourceRequest{Source: ghRepositoryURL(claims.gh.Claim.Repository), Ref: claims.gh.Claim.Ref})
+			sourceRequests = append(sourceRequests, sourceRequest{Source: ghRepositoryURL(claims.gh.Claim.Repository), Ref: claims.gh.Claim.Ref, Skills: []string{item.Name}})
 		}
 	}
 	session.prefetch(sourceRequests)
@@ -115,6 +115,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 				if err != nil {
 					r.Status = "GitHub skill check failed: " + oneLine(err.Error())
 					r.Error = oneLine(err.Error())
+					attachSourceFailure(&r, err)
 					failed = true
 				} else if action == "update" && available {
 					operationCtx, cancel := context.WithTimeout(ctx, networkTimeout)
@@ -123,6 +124,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 					if err != nil {
 						r.Status = "GitHub skill update failed: " + oneLine(err.Error())
 						r.Error = oneLine(err.Error())
+						attachSourceFailure(&r, err)
 						failed = true
 					} else {
 						r.Revision = updated.TreeSHA
@@ -151,6 +153,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 				if err != nil {
 					r.Status = "provider check failed: " + oneLine(err.Error())
 					r.Error = oneLine(err.Error())
+					attachSourceFailure(&r, err)
 					failed = true
 				} else if action == "update" && available && drift == "clean" {
 					operationCtx, cancel := context.WithTimeout(ctx, networkTimeout)
@@ -159,6 +162,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 					if err != nil {
 						r.Status = "provider update failed: " + oneLine(err.Error())
 						r.Error = oneLine(err.Error())
+						attachSourceFailure(&r, err)
 						failed = true
 					} else {
 						r.Revision = updated.SkillFolderHash
@@ -185,9 +189,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 	sort.Slice(reports, func(i, j int) bool {
 		return reports[i].Identity < reports[j].Identity || reports[i].Identity == reports[j].Identity && reports[i].Path < reports[j].Path
 	})
-	for _, r := range reports {
-		printReport(stdout, r, false)
-	}
+	printReports(stdout, reports)
 	printTrackRepairHint(stdout, reports)
 	return reports, failed
 }
