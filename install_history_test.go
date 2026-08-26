@@ -53,6 +53,12 @@ func TestParseInstallerCommand(t *testing.T) {
 	if got := parseInstallerCommand("python3 /tmp/install-skill-from-github.py --help"); len(got) != 0 {
 		t.Fatalf("help command became candidate: %#v", got)
 	}
+
+	windowsCommand := `python "C:\Users\test\.codex\skills\.system\skill-installer\scripts\install-skill-from-github.py" --repo owner/repo --path skills/demo`
+	got = parseInstallerCommand(windowsCommand)
+	if len(got) != 1 || got[0].Name != "demo" || got[0].Source != "https://github.com/owner/repo.git" {
+		t.Fatalf("Windows path candidate = %#v", got)
+	}
 }
 
 func TestReadInstallHistoryRoots(t *testing.T) {

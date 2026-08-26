@@ -24,7 +24,7 @@ type skill struct {
 	LinkTarget string
 }
 
-func scan(roots []scanRoot, _ bool, stderr io.Writer) ([]skill, bool) {
+func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
 	seen := map[string]int{}
 	visitedDirs := map[string]string{}
 	var skills []skill

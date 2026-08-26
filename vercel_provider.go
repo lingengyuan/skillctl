@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type vercelLock struct {
@@ -117,7 +118,7 @@ func executeVercelUpdater(ctx context.Context, request vercelUpdateRequest, prog
 	if err != nil {
 		command, err = exec.LookPath("npx")
 		if err != nil {
-			return "", fmt.Errorf("Vercel Skills CLI was not found; install Node.js or skills")
+			return "", fmt.Errorf("provider: Vercel Skills CLI was not found; install Node.js or skills")
 		}
 		args = append([]string{"--yes", "skills"}, args...)
 	}
@@ -136,10 +137,10 @@ func executeVercelUpdater(ctx context.Context, request vercelUpdateRequest, prog
 		if message == "" {
 			message = err.Error()
 		}
-		return output.String(), fmt.Errorf("Vercel Skills CLI: %s", message)
+		return output.String(), fmt.Errorf("provider: Vercel Skills CLI: %s", message)
 	}
 	if strings.Contains(strings.ToLower(message), "failed to update") {
-		return output.String(), fmt.Errorf("Vercel Skills CLI reported an update failure")
+		return output.String(), fmt.Errorf("provider: Vercel Skills CLI reported an update failure")
 	}
 	return output.String(), nil
 }
@@ -290,7 +291,13 @@ func checkVercelEntry(session *sourceSession, entry vercelLockEntry, installed s
 	if filepath.IsAbs(entry.SkillPath) || filepath.Base(entry.SkillPath) != "SKILL.md" || strings.HasPrefix(filepath.Clean(entry.SkillPath), "..") {
 		return false, "unknown", fmt.Errorf("invalid skillPath")
 	}
-	cache, err := session.source(entry.SourceURL, entry.Ref)
+	var cache string
+	var err error
+	if entry.SourceType == "git" {
+		cache, err = session.worktreeSource(entry.SourceURL, entry.Ref)
+	} else {
+		cache, err = session.source(entry.SourceURL, entry.Ref)
+	}
 	if err != nil {
 		return false, "unknown", err
 	}
@@ -362,11 +369,14 @@ func hashGitTree(session *sourceSession, cache, tree string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		data := object.Data
+		var data []byte
 		if file.Mode == "120000" {
 			data = append([]byte("symlink\x00"), object.Data...)
 		} else {
-			data = bytes.ReplaceAll(object.Data, []byte("\r\n"), []byte("\n"))
+			data = object.Data
+			if utf8.Valid(data) {
+				data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+			}
 		}
 		fmt.Fprintf(hash, "%s\x00%d\x00", file.Path, len(data))
 		if _, err := hash.Write(data); err != nil {

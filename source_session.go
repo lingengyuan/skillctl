@@ -38,9 +38,12 @@ func newSourceSession(ctx context.Context, networkTimeout time.Duration, progres
 	}
 }
 
-// Provider checks use an object-only cache. Explicitly tracked/copied skills
-// request a worktree cache through sourceRequest.Worktree or worktreeSource.
-var syncSourceForSession = syncObjectSource
+// Provider checks use an object-only cache unless they need filesystem access.
+// These internal seams let tests replace both real Git adapters.
+var (
+	syncSourceForSession         = syncObjectSource
+	syncWorktreeSourceForSession = syncWorktreeSource
+)
 
 const maxConcurrentSourceChecks = 4
 
@@ -232,7 +235,7 @@ func (s *sourceSession) syncRequest(request sourceRequest) (string, error) {
 	var cache string
 	var err error
 	if request.Worktree {
-		cache, err = syncWorktreeSource(operationCtx, request.Source, request.Ref)
+		cache, err = syncWorktreeSourceForSession(operationCtx, request.Source, request.Ref)
 	} else {
 		cache, err = syncSourceForSession(operationCtx, request.Source, request.Ref)
 	}

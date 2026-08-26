@@ -32,7 +32,7 @@ func TestCheckScannerIgnoresSkillctlTransactionDirectories(t *testing.T) {
 	writeCheckReliabilitySkill(t, filepath.Join(root, ".skillctl-backup-123"), "backup-skill")
 
 	var stderr bytes.Buffer
-	items, failed := scan([]scanRoot{{Path: root, Host: "test", Scope: "user", Required: true}}, false, &stderr)
+	items, failed := scan([]scanRoot{{Path: root, Host: "test", Scope: "user", Required: true}}, &stderr)
 	if failed {
 		t.Fatalf("scan failed: %s", stderr.String())
 	}
@@ -48,7 +48,7 @@ func TestCheckScannerStopsInsideValidSkillRoot(t *testing.T) {
 	writeCheckReliabilitySkill(t, filepath.Join(outer, "references", "nested"), "nested-skill")
 
 	var stderr bytes.Buffer
-	items, failed := scan([]scanRoot{{Path: root, Host: "test", Scope: "user", Required: true}}, false, &stderr)
+	items, failed := scan([]scanRoot{{Path: root, Host: "test", Scope: "user", Required: true}}, &stderr)
 	if failed || len(items) != 1 || items[0].Name != "outer-skill" {
 		t.Fatalf("unexpected scan result: failed=%v items=%#v stderr=%s", failed, items, stderr.String())
 	}

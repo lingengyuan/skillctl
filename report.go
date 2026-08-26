@@ -180,54 +180,6 @@ func printReports(w io.Writer, reports []report) {
 	}
 }
 
-type reportSummary struct {
-	Current        int
-	Updates        int
-	Modified       int
-	Untracked      int
-	Blocked        int
-	Errors         int
-	Unknown        int
-	SourceFailures int
-}
-
-func summarizeReports(reports []report) reportSummary {
-	var summary reportSummary
-	failureGroups := map[string]bool{}
-	for _, item := range reports {
-		switch item.State {
-		case "current", "pinned":
-			summary.Current++
-		case "outdated":
-			summary.Updates++
-		case "modified":
-			summary.Modified++
-		case "untracked":
-			summary.Untracked++
-		case "blocked", "ambiguous", "broken":
-			summary.Blocked++
-		case "error":
-			summary.Errors++
-		default:
-			summary.Unknown++
-		}
-		if item.FailureGroup != "" {
-			failureGroups[item.FailureGroup] = true
-		}
-	}
-	summary.SourceFailures = len(failureGroups)
-	return summary
-}
-
-func printReportSummary(w io.Writer, reports []report) {
-	summary := summarizeReports(reports)
-	fmt.Fprintf(w, "Summary: %d current, %d updates, %d modified, %d untracked, %d blocked, %d errors, %d unknown", summary.Current, summary.Updates, summary.Modified, summary.Untracked, summary.Blocked, summary.Errors, summary.Unknown)
-	if summary.SourceFailures > 0 {
-		fmt.Fprintf(w, " (%d remote source failures)", summary.SourceFailures)
-	}
-	fmt.Fprintln(w, ".")
-}
-
 type reportSink struct {
 	reports []report
 }

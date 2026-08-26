@@ -9,11 +9,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -116,7 +114,7 @@ func trackCopiedSkill(ctx context.Context, item skill, source, ref, skillPath st
 		return fmt.Errorf("track requires --source")
 	}
 	source = normalizeSource(source)
-	cache, err := syncSource(ctx, source, ref)
+	cache, err := syncWorktreeSource(ctx, source, ref)
 	if err != nil {
 		return err
 	}
@@ -284,46 +282,11 @@ func processTracked(action string, items []skill, state *trackedState, session *
 	return failed
 }
 
-func syncSource(ctx context.Context, source, ref string) (string, error) {
-	cacheBase, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("find user cache directory: %w", err)
-	}
-	id := sha256.Sum256([]byte(normalizeSource(source) + "\x00" + ref))
-	cache := filepath.Join(cacheBase, "skillctl", "sources", hex.EncodeToString(id[:16]))
-	if _, err := os.Stat(filepath.Join(cache, ".git")); os.IsNotExist(err) {
-		if err := os.MkdirAll(filepath.Dir(cache), 0o755); err != nil {
-			return "", fmt.Errorf("create source cache: %w", err)
-		}
-		cmd := exec.CommandContext(ctx, "git", "clone", "--no-checkout", source, cache)
-		cmd.WaitDelay = time.Second
-		if output, err := cmd.CombinedOutput(); err != nil {
-			if ctx.Err() != nil {
-				return "", fmt.Errorf("git clone: network timeout: %w", ctx.Err())
-			}
-			return "", fmt.Errorf("git clone: %s", strings.TrimSpace(string(output)))
-		}
-	}
-	if _, err := gitNetworkOutput(ctx, cache, "fetch", "--prune", "--recurse-submodules=no", "origin"); err != nil {
-		return "", fmt.Errorf("git fetch: %w", err)
-	}
-	revision, err := resolveSourceRevision(cache, ref)
-	if err != nil {
-		return "", err
-	}
-	if _, err := gitOutput(cache, "checkout", "--force", "--detach", revision); err != nil {
-		return "", fmt.Errorf("checkout source ref: %w", err)
-	}
-	return cache, nil
-}
-
 func resolveSourceRevision(cache, ref string) (string, error) {
 	if ref == "" {
 		return "refs/remotes/origin/HEAD", nil
 	}
-	if strings.HasPrefix(ref, "refs/heads/") {
-		ref = strings.TrimPrefix(ref, "refs/heads/")
-	}
+	ref = strings.TrimPrefix(ref, "refs/heads/")
 	candidates := []string{
 		"refs/remotes/origin/" + ref,
 		"refs/tags/" + ref,

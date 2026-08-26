@@ -197,8 +197,20 @@ func syncObjectSource(ctx context.Context, source, ref string) (string, error) {
 	// A fresh clone already contains the advertised refs. Avoid the redundant
 	// clone-then-fetch sequence that previously doubled first-run network work.
 	if !fresh {
-		if _, err := gitNetworkOutput(ctx, cache, "fetch", "--prune", "--force", "--recurse-submodules=no", "origin", "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"); err != nil {
+		args := []string{"fetch", "--prune", "--force", "--recurse-submodules=no", "origin", "+refs/heads/*:refs/heads/*", "+refs/tags/*:refs/tags/*"}
+		if ref == "" {
+			args = append(args, "+HEAD:refs/skillctl/default")
+		}
+		if _, err := gitNetworkOutput(ctx, cache, args...); err != nil {
 			return "", fmt.Errorf("git fetch: %w", err)
+		}
+	} else if ref == "" {
+		defaultRevision, err := gitOutput(cache, "rev-parse", "--verify", "HEAD^{commit}")
+		if err != nil {
+			return "", fmt.Errorf("resolve source default branch: %w", err)
+		}
+		if _, err := gitOutput(cache, "update-ref", "refs/skillctl/default", defaultRevision); err != nil {
+			return "", fmt.Errorf("remember source default branch: %w", err)
 		}
 	}
 	revision, err := resolveObjectRevision(cache, ref)
@@ -216,7 +228,7 @@ func syncObjectSource(ctx context.Context, source, ref string) (string, error) {
 
 func resolveObjectRevision(cache, ref string) (string, error) {
 	if ref == "" {
-		for _, candidate := range []string{"refs/skillctl/selected", "HEAD", "refs/heads/main", "refs/heads/master"} {
+		for _, candidate := range []string{"refs/skillctl/default", "refs/heads/main", "refs/heads/master", "refs/skillctl/selected", "HEAD"} {
 			if revision, err := gitOutput(cache, "rev-parse", "--verify", candidate+"^{commit}"); err == nil {
 				return revision, nil
 			}

@@ -22,7 +22,7 @@ func TestIntegrationWindowsJunction(t *testing.T) {
 	if output, err := exec.Command("cmd.exe", "/d", "/c", "mklink", "/J", link, target).CombinedOutput(); err != nil {
 		t.Skipf("junction is unavailable: %v: %s", err, output)
 	}
-	items, failed := scan([]scanRoot{{Path: target}, {Path: root}}, false, io.Discard)
+	items, failed := scan([]scanRoot{{Path: target}, {Path: root}}, io.Discard)
 	if failed || len(items) != 1 {
 		t.Fatalf("items=%#v failed=%v", items, failed)
 	}

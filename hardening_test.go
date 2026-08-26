@@ -47,11 +47,11 @@ metadata:
 func TestScanRootRequiredSemantics(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")
 	var stderr bytes.Buffer
-	if skills, failed := scan([]scanRoot{{Path: missing, Host: "test", Scope: "user"}}, false, &stderr); failed || len(skills) != 0 {
+	if skills, failed := scan([]scanRoot{{Path: missing, Host: "test", Scope: "user"}}, &stderr); failed || len(skills) != 0 {
 		t.Fatalf("optional root failed=%v skills=%#v stderr=%q", failed, skills, stderr.String())
 	}
 	stderr.Reset()
-	if _, failed := scan([]scanRoot{{Path: missing, Host: "test", Scope: "user", Required: true}}, false, &stderr); !failed {
+	if _, failed := scan([]scanRoot{{Path: missing, Host: "test", Scope: "user", Required: true}}, &stderr); !failed {
 		t.Fatalf("required root unexpectedly succeeded: %q", stderr.String())
 	}
 }
@@ -158,7 +158,7 @@ install_root = "~/.agents/skills"
 		t.Fatal(err)
 	}
 
-	_, manifests, _, _, _, err := loadConfig(configPath)
+	_, manifests, _, _, err := loadConfig(configPath)
 	if err != nil {
 		t.Fatal(err)
 	}

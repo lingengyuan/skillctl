@@ -229,7 +229,7 @@ func parseInstallerCommand(command string) []installCandidate {
 	words := shellWords(command)
 	var result []installCandidate
 	for index, word := range words {
-		if filepath.Base(word) != githubInstaller {
+		if filepath.Base(strings.ReplaceAll(word, `\`, "/")) != githubInstaller {
 			continue
 		}
 		values := make(map[string][]string)
@@ -243,7 +243,9 @@ func parseInstallerCommand(command string) []installCandidate {
 				continue
 			}
 			i++
-			values[flag] = values[flag]
+			if _, exists := values[flag]; !exists {
+				values[flag] = nil
+			}
 			for i < len(words) && !strings.HasPrefix(words[i], "--") && !isShellOperator(words[i]) {
 				values[flag] = append(values[flag], words[i])
 				i++
@@ -327,7 +329,15 @@ func shellWords(command string) []string {
 			continue
 		}
 		if ch == '\\' && quote != '\'' {
-			escaped = true
+			if i+1 < len(command) {
+				next := command[i+1]
+				if quote == '"' && (next == '"' || next == '\\' || next == '$' || next == '`' || next == '\n') ||
+					quote == 0 && strings.ContainsRune(" \t\r\n\"'\\;|&", rune(next)) {
+					escaped = true
+					continue
+				}
+			}
+			word.WriteByte(ch)
 			continue
 		}
 		if quote != 0 {

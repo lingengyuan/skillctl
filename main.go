@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var version = "0.3.9"
+var version = "0.4.0"
 
 const defaultNetworkTimeout = 10 * time.Second
 
@@ -67,14 +67,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	roots, manifests, managed, networkTimeout, ignoreMissing, err := loadConfig(opt.ConfigPath)
+	roots, manifests, managed, networkTimeout, err := loadConfig(opt.ConfigPath)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
 	if len(opt.Paths) > 0 {
 		roots = nil
-		ignoreMissing = false
 		for _, path := range opt.Paths {
 			roots = append(roots, scanRoot{Path: resolvePath(path, "."), Host: "manual", Scope: "local", Required: true})
 		}
@@ -90,7 +89,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	started := time.Now()
 	scanStarted := time.Now()
 	fmt.Fprintln(progress, "Scanning skills...")
-	skills, scanFailed := scan(roots, ignoreMissing, stderr)
+	skills, scanFailed := scan(roots, stderr)
 	skills = filterSkills(skills, opt.Hosts, opt.Scopes)
 	fmt.Fprintf(progress, "Found %d unique skills (%d installations, %s).\n", uniqueSkillCount(skills), len(skills), time.Since(scanStarted).Round(time.Millisecond))
 	if len(opt.Names) > 0 {

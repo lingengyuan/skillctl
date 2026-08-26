@@ -415,9 +415,9 @@ func TestUpdateAppliesTimeoutPerProviderOperation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	originalSync := syncSourceForSession
-	t.Cleanup(func() { syncSourceForSession = originalSync })
-	syncSourceForSession = func(context.Context, string, string) (string, error) {
+	originalSync := syncWorktreeSourceForSession
+	t.Cleanup(func() { syncWorktreeSourceForSession = originalSync })
+	syncWorktreeSourceForSession = func(context.Context, string, string) (string, error) {
 		return sourceRoot, nil
 	}
 	originalUpdater := runVercelUpdater
@@ -597,7 +597,7 @@ func BenchmarkScanUnmanagedSkills(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		items, failed := scan([]scanRoot{{Path: root}}, false, io.Discard)
+		items, failed := scan([]scanRoot{{Path: root}}, io.Discard)
 		if failed || len(items) != 100 {
 			b.Fatalf("items=%d failed=%v", len(items), failed)
 		}

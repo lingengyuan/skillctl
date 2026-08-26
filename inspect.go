@@ -23,7 +23,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			continue
 		}
 		if claims.hasVercel && claims.vercel.Entry.SourceURL != "" && claims.vercel.Entry.SkillPath != "" && claims.vercel.Entry.SkillFolderHash != "" && (claims.vercel.Entry.SourceType == "github" || claims.vercel.Entry.SourceType == "git") {
-			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.vercel.Entry.SourceURL, Ref: claims.vercel.Entry.Ref, Skills: []string{item.Name}})
+			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.vercel.Entry.SourceURL, Ref: claims.vercel.Entry.Ref, Skills: []string{item.Name}, Worktree: claims.vercel.Entry.SourceType == "git"})
 		}
 		if claims.hasTracked {
 			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.tracked.Source, Ref: claims.tracked.Ref, Skills: []string{item.Name}, Worktree: true})
