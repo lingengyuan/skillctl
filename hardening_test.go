@@ -220,7 +220,7 @@ func TestDoctorFixDoesNotReportItsOwnOperationLock(t *testing.T) {
 	}
 }
 
-func TestGitTreeComparisonIsPathAware(t *testing.T) {
+func TestRepositorySkillChangesIsPathAware(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not installed")
 	}
@@ -230,6 +230,9 @@ func TestGitTreeComparisonIsPathAware(t *testing.T) {
 	runHardeningGit(t, root, "config", "user.email", "skillctl@example.invalid")
 	skillPath := filepath.Join(root, "skills", "demo")
 	writeTestSkill(t, skillPath, "demo", "first")
+	otherSkillPath := filepath.Join(root, "skills", "other")
+	writeTestSkill(t, otherSkillPath, "other", "first")
+	skills := []skill{{Name: "demo", Path: skillPath}, {Name: "other", Path: otherSkillPath}}
 	if err := os.MkdirAll(filepath.Join(root, "docs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -243,26 +246,34 @@ func TestGitTreeComparisonIsPathAware(t *testing.T) {
 	}
 	runHardeningGit(t, root, "add", ".")
 	runHardeningGit(t, root, "commit", "-m", "docs only")
-	before, err := gitTreeAtRevision(root, skillPath, "HEAD~1")
+	changed, err := repositorySkillChanges(root, skills, "HEAD~1", "HEAD")
 	if err != nil {
 		t.Fatal(err)
 	}
-	after, err := gitTreeAtRevision(root, skillPath, "HEAD")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if before != after {
-		t.Fatalf("unrelated commit changed skill tree: %s != %s", before, after)
+	if changed[canonicalPathKey(skillPath)] || changed[canonicalPathKey(otherSkillPath)] {
+		t.Fatalf("unrelated commit changed skill: %#v", changed)
 	}
 	writeTestSkill(t, skillPath, "demo", "second")
 	runHardeningGit(t, root, "add", ".")
 	runHardeningGit(t, root, "commit", "-m", "skill change")
-	latest, err := gitTreeAtRevision(root, skillPath, "HEAD")
+	changed, err = repositorySkillChanges(root, skills, "HEAD~1", "HEAD")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if latest == after {
-		t.Fatal("skill content change did not change tree hash")
+	if !changed[canonicalPathKey(skillPath)] || changed[canonicalPathKey(otherSkillPath)] {
+		t.Fatalf("skill changes = %#v", changed)
+	}
+	if err := os.RemoveAll(otherSkillPath); err != nil {
+		t.Fatal(err)
+	}
+	runHardeningGit(t, root, "add", ".")
+	runHardeningGit(t, root, "commit", "-m", "remove other skill")
+	changed, err = repositorySkillChanges(root, skills, "HEAD~1", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed[canonicalPathKey(skillPath)] || !changed[canonicalPathKey(otherSkillPath)] {
+		t.Fatalf("removed skill changes = %#v", changed)
 	}
 }
 

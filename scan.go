@@ -184,22 +184,26 @@ func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(s
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		info, statErr := os.Stat(path)
-		if statErr != nil {
-			if errors.Is(statErr, os.ErrNotExist) {
-				target := ""
-				if link, linkErr := os.Readlink(path); linkErr == nil {
-					target = link
-					if !filepath.IsAbs(target) {
-						target = filepath.Join(dir, target)
+		isDir := entry.IsDir()
+		if entry.Type()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			info, statErr := os.Stat(path)
+			if statErr != nil {
+				if errors.Is(statErr, os.ErrNotExist) {
+					target := ""
+					if link, linkErr := os.Readlink(path); linkErr == nil {
+						target = link
+						if !filepath.IsAbs(target) {
+							target = filepath.Join(dir, target)
+						}
 					}
+					visitBroken(path, target)
+					continue
 				}
-				visitBroken(path, target)
-				continue
+				return statErr
 			}
-			return statErr
+			isDir = info.IsDir()
 		}
-		if !info.IsDir() {
+		if !isDir {
 			continue
 		}
 		if err := walkFollowingLinks(path, visited, visitSkill, visitBroken, visitAlias); err != nil {

@@ -126,7 +126,7 @@ required = false
 
 ## 开发
 
-需要 Go 1.26 和 Git。
+需要 Go 1.27 和 Git。
 
 ```sh
 gofmt -w .

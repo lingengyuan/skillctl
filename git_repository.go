@@ -244,32 +244,45 @@ func processRepository(ctx context.Context, networkTimeout time.Duration, action
 
 func repositorySkillChanges(root string, skills []skill, leftRevision, rightRevision string) (map[string]bool, error) {
 	result := make(map[string]bool, len(skills))
-	for _, item := range skills {
-		left, err := gitTreeAtRevision(root, item.Path, leftRevision)
-		if err != nil {
-			return nil, fmt.Errorf("%s at %s: %w", item.Name, leftRevision, err)
+	if len(skills) == 0 {
+		return result, nil
+	}
+
+	relativePaths := make([]string, len(skills))
+	args := []string{"-C", root, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", leftRevision, rightRevision, "--"}
+	for index, item := range skills {
+		rel, err := filepath.Rel(root, item.Path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("%s: skill path is outside repository", item.Name)
 		}
-		right, err := gitTreeAtRevision(root, item.Path, rightRevision)
-		if err != nil {
-			// A missing path upstream means the installed skill was removed or
-			// relocated and must be treated as a material change.
-			result[canonicalPathKey(item.Path)] = true
+		rel = filepath.ToSlash(rel)
+		relativePaths[index] = rel
+		args = append(args, rel)
+	}
+
+	cmd := exec.Command("git", args...)
+	cmd.Env = append(gitNonInteractiveEnv(), "GIT_LITERAL_PATHSPECS=1")
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if message := strings.TrimSpace(string(exitErr.Stderr)); message != "" {
+				return nil, fmt.Errorf("compare repository revisions: %s", message)
+			}
+		}
+		return nil, fmt.Errorf("compare repository revisions: %w", err)
+	}
+	for _, changedPath := range strings.Split(string(output), "\x00") {
+		if changedPath == "" {
 			continue
 		}
-		result[canonicalPathKey(item.Path)] = left != right
+		for index, item := range skills {
+			rel := relativePaths[index]
+			if rel == "." || changedPath == rel || strings.HasPrefix(changedPath, rel+"/") {
+				result[canonicalPathKey(item.Path)] = true
+			}
+		}
 	}
 	return result, nil
-}
-
-func gitTreeAtRevision(root, skillPath, revision string) (string, error) {
-	rel, err := filepath.Rel(root, skillPath)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("skill path is outside repository")
-	}
-	if rel == "." {
-		return gitOutput(root, "rev-parse", revision+"^{tree}")
-	}
-	return gitOutput(root, "rev-parse", revision+":"+filepath.ToSlash(rel))
 }
 
 func anySkillChanged(changed map[string]bool) bool {

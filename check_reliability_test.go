@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -70,10 +69,8 @@ func TestCheckSourceElapsedExcludesWorkerQueueTime(t *testing.T) {
 	defer func() { syncSourceForSession = original }()
 
 	gate := make(chan struct{})
-	var calls atomic.Int32
 	syncSourceForSession = func(ctx context.Context, source, ref string) (string, error) {
-		n := calls.Add(1)
-		if n <= maxConcurrentSourceChecks {
+		if !strings.HasSuffix(source, "source-5.git") {
 			select {
 			case <-gate:
 			case <-ctx.Done():

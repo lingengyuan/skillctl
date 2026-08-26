@@ -6,7 +6,7 @@ import (
 )
 
 func shouldIgnoreSkillContent(rel string) bool {
-	for _, component := range strings.Split(filepath.ToSlash(rel), "/") {
+	for component := range strings.SplitSeq(filepath.ToSlash(rel), "/") {
 		switch component {
 		case ".git", ".hg", ".svn":
 			return true
