@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -139,8 +139,15 @@ func readInstallHistoryRoots(roots []string) (map[string][]installCandidate, err
 		}
 	}
 	for name := range result {
-		sort.SliceStable(result[name], func(i, j int) bool {
-			return result[name][i].When.After(result[name][j].When)
+		slices.SortStableFunc(result[name], func(a, b installCandidate) int {
+			switch {
+			case a.When.After(b.When):
+				return -1
+			case a.When.Before(b.When):
+				return 1
+			default:
+				return 0
+			}
 		})
 	}
 	return result, nil

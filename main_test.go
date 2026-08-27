@@ -286,7 +286,7 @@ func TestSourceSessionDeduplicatesAndRunsConcurrently(t *testing.T) {
 		session.prefetch([]sourceRequest{{Source: "one"}, {Source: "two"}, {Source: "one"}})
 		close(done)
 	}()
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case <-started:
 		case <-time.After(time.Second):
@@ -592,11 +592,11 @@ func TestExplicitConfigRejectsUnknownFields(t *testing.T) {
 
 func BenchmarkScanUnmanagedSkills(b *testing.B) {
 	root := b.TempDir()
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		writeBenchmarkSkill(b, filepath.Join(root, fmt.Sprintf("skill-%03d", i)), fmt.Sprintf("skill-%03d", i))
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		items, failed := scan([]scanRoot{{Path: root}}, io.Discard)
 		if failed || len(items) != 100 {
 			b.Fatalf("items=%d failed=%v", len(items), failed)

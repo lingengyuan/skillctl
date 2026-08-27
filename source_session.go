@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -88,8 +89,8 @@ func (e *sourceSyncError) Error() string {
 func (e *sourceSyncError) Unwrap() error { return e.Err }
 
 func sourceErrorDetails(err error) (key, label, stage string, ok bool) {
-	var sourceErr *sourceSyncError
-	if !errors.As(err, &sourceErr) {
+	sourceErr, ok := errors.AsType[*sourceSyncError](err)
+	if !ok {
 		return "", "", "", false
 	}
 	return sourceErr.Key, sourceErr.Label, sourceErr.Stage, true
@@ -129,13 +130,10 @@ func (s *sourceSession) prefetch(requests []sourceRequest) {
 	for _, item := range pending {
 		s.progressf("Checking remote source %d/%d: %s%s...\n", item.number, s.sourceCount, item.label, affectedSkillLabel(item.Skills))
 	}
-	workerCount := len(pending)
-	if workerCount > maxConcurrentSourceChecks {
-		workerCount = maxConcurrentSourceChecks
-	}
+	workerCount := min(len(pending), maxConcurrentSourceChecks)
 	jobs := make(chan pendingSource)
 	results := make(chan sourceResult, len(pending))
-	for i := 0; i < workerCount; i++ {
+	for range workerCount {
 		go func() {
 			for item := range jobs {
 				started := time.Now()
@@ -162,10 +160,8 @@ func (s *sourceSession) prefetch(requests []sourceRequest) {
 }
 
 func appendUniqueString(values []string, value string) []string {
-	for _, existing := range values {
-		if existing == value {
-			return values
-		}
+	if slices.Contains(values, value) {
+		return values
 	}
 	return append(values, value)
 }
@@ -183,12 +179,9 @@ func affectedSkillLabel(skills []string) string {
 func sourceDisplayLabel(source, ref string) string {
 	normalized := strings.TrimSpace(source)
 	label := ""
-	if strings.HasPrefix(normalized, "git@") {
-		if at := strings.IndexByte(normalized, '@'); at >= 0 {
-			value := normalized[at+1:]
-			if colon := strings.IndexByte(value, ':'); colon >= 0 {
-				label = value[:colon] + "/" + value[colon+1:]
-			}
+	if value, ok := strings.CutPrefix(normalized, "git@"); ok {
+		if host, repository, found := strings.Cut(value, ":"); found {
+			label = host + "/" + repository
 		}
 	}
 	if label == "" {

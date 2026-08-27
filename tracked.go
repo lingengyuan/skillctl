@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,7 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -57,7 +58,7 @@ func (s *trackedState) save() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
-	sort.Slice(s.Skills, func(i, j int) bool { return s.Skills[i].Path < s.Skills[j].Path })
+	slices.SortFunc(s.Skills, func(a, b trackedEntry) int { return cmp.Compare(a.Path, b.Path) })
 	content, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
@@ -407,7 +408,7 @@ func hashDirectory(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sort.Strings(paths)
+	slices.Sort(paths)
 	for _, rel := range paths {
 		path := filepath.Join(root, rel)
 		info, err := os.Lstat(path)

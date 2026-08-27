@@ -1,9 +1,11 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"io"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -166,7 +168,7 @@ func printReports(w io.Writer, reports []report) {
 		for _, affected := range group {
 			names = append(names, affected.Identity)
 		}
-		sort.Strings(names)
+		slices.Sort(names)
 		source := item.FailureSource
 		if source == "" {
 			source = "remote source"
@@ -189,19 +191,12 @@ func mergeReportsByIdentity(reports []report) []report {
 	for _, item := range reports {
 		groups[item.Identity] = append(groups[item.Identity], item)
 	}
-	identities := make([]string, 0, len(groups))
-	for identity := range groups {
-		identities = append(identities, identity)
-	}
-	sort.Strings(identities)
+	identities := slices.Sorted(maps.Keys(groups))
 	merged := make([]report, 0, len(identities))
 	for _, identity := range identities {
 		group := groups[identity]
-		sort.SliceStable(group, func(i, j int) bool {
-			if group[i].Path == group[j].Path {
-				return group[i].Provider < group[j].Provider
-			}
-			return group[i].Path < group[j].Path
+		slices.SortStableFunc(group, func(a, b report) int {
+			return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Provider, b.Provider))
 		})
 		merged = append(merged, mergeReportGroup(group))
 	}
@@ -311,29 +306,25 @@ func mergeReportGroup(group []report) report {
 		merged.Revision = ""
 	}
 	if len(errors) > 0 {
-		values := make([]string, 0, len(errors))
-		for value := range errors {
-			values = append(values, value)
-		}
-		sort.Strings(values)
+		values := slices.Sorted(maps.Keys(errors))
 		merged.Error = strings.Join(values, "; ")
 	}
 	if len(failureGroups) == 1 {
-		for value := range failureGroups {
+		for value := range maps.Keys(failureGroups) {
 			merged.FailureGroup = value
 		}
 	} else {
 		merged.FailureGroup = ""
 	}
 	if len(failureSources) == 1 {
-		for value := range failureSources {
+		for value := range maps.Keys(failureSources) {
 			merged.FailureSource = value
 		}
 	} else {
 		merged.FailureSource = ""
 	}
 	if len(failureStages) == 1 {
-		for value := range failureStages {
+		for value := range maps.Keys(failureStages) {
 			merged.FailureStage = value
 		}
 	} else {

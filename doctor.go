@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 )
@@ -49,11 +50,7 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 			add("error", "broken_link", "skill link target is unavailable: "+item.LinkTarget, item.Path, item.Name)
 		}
 	}
-	names := make([]string, 0, len(byName))
-	for name := range byName {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := slices.Sorted(maps.Keys(byName))
 	for _, name := range names {
 		items := byName[name]
 		canonical := map[string]bool{}
@@ -67,7 +64,7 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 			paths = append(paths, item.Path)
 		}
 		if len(paths) > 1 {
-			sort.Strings(paths)
+			slices.Sort(paths)
 			add("warning", "duplicate_name", fmt.Sprintf("%d distinct installations share this name: %s", len(paths), strings.Join(paths, ", ")), "", name)
 		}
 	}

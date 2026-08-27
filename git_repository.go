@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -59,11 +60,7 @@ func processGit(action string, skills []skill, state *trackedState, session *sou
 			repo.Allowed = true
 		}
 	}
-	var roots []string
-	for root := range repos {
-		roots = append(roots, root)
-	}
-	sort.Strings(roots)
+	roots := slices.Sorted(maps.Keys(repos))
 	for _, root := range roots {
 		if sink, ok := stdout.(*reportSink); ok {
 			sink.markGit(repos[root].Skills, root)
@@ -271,7 +268,7 @@ func repositorySkillChanges(root string, skills []skill, leftRevision, rightRevi
 		}
 		return nil, fmt.Errorf("compare repository revisions: %w", err)
 	}
-	for _, changedPath := range strings.Split(string(output), "\x00") {
+	for changedPath := range strings.SplitSeq(string(output), "\x00") {
 		if changedPath == "" {
 			continue
 		}

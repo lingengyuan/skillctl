@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,7 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -362,7 +363,7 @@ func hashGitTree(session *sourceSession, cache, tree string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	slices.SortFunc(files, func(a, b gitTreeFile) int { return cmp.Compare(a.Path, b.Path) })
 	hash := sha256.New()
 	for _, file := range files {
 		object, err := session.gitObject(cache, file.Object)
@@ -433,18 +434,17 @@ func parseGitTree(object gitObject) ([]gitTreeFile, error) {
 	data := object.Data
 	var entries []gitTreeFile
 	for len(data) > 0 {
-		space := bytes.IndexByte(data, ' ')
-		if space <= 0 {
+		modeData, remaining, found := bytes.Cut(data, []byte{' '})
+		if !found || len(modeData) == 0 {
 			return nil, fmt.Errorf("invalid git tree mode")
 		}
-		mode := string(data[:space])
-		data = data[space+1:]
-		nul := bytes.IndexByte(data, 0)
-		if nul < 0 {
+		mode := string(modeData)
+		pathData, remaining, found := bytes.Cut(remaining, []byte{0})
+		if !found {
 			return nil, fmt.Errorf("invalid git tree path")
 		}
-		path := string(data[:nul])
-		data = data[nul+1:]
+		path := string(pathData)
+		data = remaining
 		if len(data) < objectBytes {
 			return nil, fmt.Errorf("invalid git tree object id")
 		}

@@ -1,13 +1,14 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -76,11 +77,8 @@ func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
 			failed = true
 		}
 	}
-	sort.Slice(skills, func(i, j int) bool {
-		if skills[i].Name == skills[j].Name {
-			return skills[i].Path < skills[j].Path
-		}
-		return skills[i].Name < skills[j].Name
+	slices.SortFunc(skills, func(a, b skill) int {
+		return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.Path, b.Path))
 	})
 	return skills, failed
 }

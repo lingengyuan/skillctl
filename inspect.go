@@ -1,11 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"path/filepath"
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -36,11 +38,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 	reports := make([]report, 0, len(skills))
 	remaining := make([]skill, 0, len(skills))
 	failed := false
-	var errorPaths []string
-	for path := range lockErrors {
-		errorPaths = append(errorPaths, path)
-	}
-	sort.Strings(errorPaths)
+	errorPaths := slices.Sorted(maps.Keys(lockErrors))
 	for _, item := range skills {
 		if item.Broken {
 			reports = append(reports, reportFor(item, "filesystem", "unknown", nil, "broken", "broken link -> "+item.LinkTarget, false, "report-only", ""))
@@ -70,7 +68,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 		owner, managedEvidence := claims.managedOwner, claims.managedEvidence
 		tracked, isTracked := claims.tracked, claims.hasTracked
 		if claims.count() > 1 {
-			allEvidence := append([]string{}, managedEvidence...)
+			allEvidence := slices.Clone(managedEvidence)
 			allEvidence = append(allEvidence, evidence...)
 			if isTracked {
 				allEvidence = append(allEvidence, tracked.Source)
@@ -186,8 +184,8 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 		reports = append(reports, sink.reports...)
 	}
 	reports = mergeReportsByIdentity(reports)
-	sort.Slice(reports, func(i, j int) bool {
-		return reports[i].Identity < reports[j].Identity || reports[i].Identity == reports[j].Identity && reports[i].Path < reports[j].Path
+	slices.SortFunc(reports, func(a, b report) int {
+		return cmp.Or(cmp.Compare(a.Identity, b.Identity), cmp.Compare(a.Path, b.Path))
 	})
 	printReports(stdout, reports)
 	printTrackRepairHint(stdout, reports)
