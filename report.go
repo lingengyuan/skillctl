@@ -99,6 +99,8 @@ func classifyReport(r report) (string, string) {
 		return "outdated", "upstream_changed"
 	case strings.Contains(status, "local/untracked"):
 		return "untracked", "missing_update_source"
+	case strings.HasPrefix(status, "tracked source (updates unavailable)"):
+		return "unknown", "updates_unavailable"
 	case strings.Contains(status, "diverged") || strings.Contains(status, "ahead by") || strings.Contains(status, "detached head") || strings.Contains(status, "no upstream") || strings.Contains(status, "blocked"):
 		return "blocked", "git_state_blocks_update"
 	case status == "up to date" || status == "updated" || strings.HasPrefix(status, "managed by") || status == "managed from local path":

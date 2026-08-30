@@ -157,7 +157,7 @@ func TestCheckRecognizesProviderMetadata(t *testing.T) {
 	for _, item := range reports {
 		byName[item.Identity] = item
 	}
-	if got := byName["vercel-skill"]; got.Provider != "vercel-skills-lock-v3" || got.Status != "unsupported source type: local" {
+	if got := byName["vercel-skill"]; got.Provider != "vercel-skills-lock-v3" || got.Status != "tracked source (updates unavailable): local" || got.State != "unknown" || got.ReasonCode != "updates_unavailable" {
 		t.Fatalf("unexpected Vercel report: %#v", got)
 	}
 	if got := byName["gh-skill"]; got.Provider != "gh-skill" || got.Status != "managed from local path" {

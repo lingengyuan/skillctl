@@ -142,7 +142,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			r := reportFor(item, "vercel-skills-lock-v3", "provider", evidence, "unknown", "provider check unsupported", false, "report-only", "")
 			r.Revision = claim.Entry.SkillFolderHash
 			if claim.Entry.SourceType != "github" && claim.Entry.SourceType != "git" {
-				r.Status = "unsupported source type: " + claim.Entry.SourceType
+				r.Status = "tracked source (updates unavailable): " + claim.Entry.SourceType
 			} else {
 				r.Executor = "vercel-skills-cli"
 				available, drift, err := checkVercelEntry(session, claim.Entry, item.Path)

@@ -23,6 +23,12 @@ func TestTrustedCommandsOnlyReadsStructuredToolCalls(t *testing.T) {
 		t.Fatalf("current Codex command = %#v", got)
 	}
 
+	realInput, _ := json.Marshal(`const r = await tools.exec_command({"cmd":"npx --yes skills add owner/repo"});`)
+	realCodex := []byte(`{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":` + string(realInput) + `}}`)
+	if got := trustedCommands(realCodex); len(got) != 1 || got[0] != "npx --yes skills add owner/repo" {
+		t.Fatalf("real Codex command = %#v", got)
+	}
+
 	claude := []byte(`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"python3 /tmp/install-skill-from-github.py --repo owner/repo --path demo"}}]}}`)
 	if got := trustedCommands(claude); len(got) != 1 {
 		t.Fatalf("Claude commands = %#v", got)
@@ -58,6 +64,53 @@ func TestParseInstallerCommand(t *testing.T) {
 	got = parseInstallerCommand(windowsCommand)
 	if len(got) != 1 || got[0].Name != "demo" || got[0].Source != "https://github.com/owner/repo.git" {
 		t.Fatalf("Windows path candidate = %#v", got)
+	}
+}
+
+func TestParseSkillsAddCommand(t *testing.T) {
+	got := parseInstallCommand("npx --yes skills add tw93/Waza -a codex -g -y")
+	if len(got) != 1 || got[0].Name != "" || got[0].Source != "https://github.com/tw93/Waza.git" {
+		t.Fatalf("npx all-skills candidate = %#v", got)
+	}
+
+	got = parseInstallCommand("npm exec --yes skills -- add https://github.com/owner/repo/tree/v1/skills/demo --skill skills/demo")
+	if len(got) != 1 || got[0].Name != "demo" || got[0].SkillPath != "skills/demo" || got[0].Ref != "v1" {
+		t.Fatalf("npm exec candidate = %#v", got)
+	}
+
+	if got := parseInstallCommand("npx skills update -g -y"); len(got) != 0 {
+		t.Fatalf("update command became an install candidate: %#v", got)
+	}
+
+	got = parseInstallCommand("npx skills@latest add -g owner/repo -s alpha")
+	if len(got) != 1 || got[0].Name != "alpha" || got[0].Source != "https://github.com/owner/repo.git" {
+		t.Fatalf("versioned explicit candidate = %#v", got)
+	}
+
+	got = parseInstallCommand("cd /tmp && env INSTALL_SCOPE=user npx skills add owner/repo --skill alpha")
+	if len(got) != 1 || got[0].Name != "alpha" {
+		t.Fatalf("compound command candidate = %#v", got)
+	}
+
+	got = parseInstallCommand("npx skills add -a codex cursor owner/repo --skill alpha beta")
+	if len(got) != 2 || got[0].Name != "alpha" || got[1].Name != "beta" {
+		t.Fatalf("multi-value candidate = %#v", got)
+	}
+
+	got = parseInstallCommand("npx skills add owner/repo --skill '*'")
+	if len(got) != 1 || got[0].Name != "" {
+		t.Fatalf("all-skills candidate = %#v", got)
+	}
+
+	got = parseInstallCommand("npx skills add owner/repo@alpha")
+	if len(got) != 1 || got[0].Name != "alpha" || got[0].Source != "https://github.com/owner/repo.git" {
+		t.Fatalf("repository skill shorthand = %#v", got)
+	}
+
+	localSource := filepath.Join(t.TempDir(), "local-source")
+	got = parseInstallCommand("npx skills add " + localSource)
+	if len(got) != 1 || got[0].Source != localSource {
+		t.Fatalf("absolute local source = %#v", got)
 	}
 }
 
@@ -99,6 +152,23 @@ func TestReadInstallHistoryRootsParsesCurrentCodexInstallerCommand(t *testing.T)
 		if len(matches) != 1 || matches[0].Source != "https://github.com/tw93/Waza.git" || matches[0].SkillPath != "skills/"+name {
 			t.Fatalf("history candidate for %s = %#v", name, matches)
 		}
+	}
+}
+
+func TestReadInstallHistoryRootsParsesSkillsAddWithoutSkillName(t *testing.T) {
+	root := t.TempDir()
+	line := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npx --yes skills add tw93/Waza -a codex -g -y"}}]}}` + "\n"
+	if err := os.WriteFile(filepath.Join(root, "session.jsonl"), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := readInstallHistoryRoots([]string{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := got[""]
+	if len(matches) != 1 || matches[0].Source != "https://github.com/tw93/Waza.git" {
+		t.Fatalf("all-skills history candidate = %#v", matches)
 	}
 }
 

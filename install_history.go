@@ -18,7 +18,7 @@ import (
 
 const githubInstaller = "install-skill-from-github.py"
 
-var commandProperty = regexp.MustCompile(`\b(?:cmd|command)\s*:\s*("(?:\\.|[^"\\])*")`)
+var commandProperty = regexp.MustCompile(`(?:\b(?:cmd|command)|"(?:cmd|command)")\s*:\s*("(?:\\.|[^"\\])*")`)
 
 type installCandidate struct {
 	Name      string
@@ -78,7 +78,7 @@ func trackFromInstallHistory(ctx context.Context, timeout time.Duration, items [
 	}
 	failed := false
 	for _, item := range pending {
-		matches := candidates[item.Name]
+		matches := append(slices.Clone(candidates[item.Name]), candidates[""]...)
 		if len(matches) == 0 {
 			fmt.Fprintf(stdout, "%s: no trusted install record\n", item.Name)
 			if namesExplicit {
@@ -86,24 +86,42 @@ func trackFromInstallHistory(ctx context.Context, timeout time.Duration, items [
 			}
 			continue
 		}
+		verified := map[string]trackedEntry{}
 		var lastErr error
-		tracked := false
 		for _, candidate := range matches {
 			operationCtx, cancel := context.WithTimeout(ctx, timeout)
-			lastErr = trackCopiedSkill(operationCtx, item, candidate.Source, candidate.Ref, candidate.SkillPath, state)
+			entry, err := verifyCopiedSkill(operationCtx, item, candidate.Source, candidate.Ref, candidate.SkillPath)
 			cancel()
-			if lastErr == nil {
-				fmt.Fprintf(stdout, "%s: tracked from install history\n", item.Name)
-				tracked = true
-				break
+			if err != nil {
+				lastErr = err
+				continue
 			}
+			verified[historyEntryKey(entry)] = entry
 		}
-		if !tracked {
+		switch len(verified) {
+		case 0:
 			fmt.Fprintf(stderr, "%s: install record found but verification failed (%s)\n", item.Name, oneLine(lastErr.Error()))
+			failed = true
+		case 1:
+			for _, entry := range verified {
+				state.put(entry)
+			}
+			if err := state.save(); err != nil {
+				fmt.Fprintf(stderr, "%s: save source state (%s)\n", item.Name, oneLine(err.Error()))
+				failed = true
+				continue
+			}
+			fmt.Fprintf(stdout, "%s: tracked from install history\n", item.Name)
+		default:
+			fmt.Fprintf(stderr, "%s: ambiguous verified install records\n", item.Name)
 			failed = true
 		}
 	}
 	return failed
+}
+
+func historyEntryKey(entry trackedEntry) string {
+	return entry.Source + "\x00" + entry.Ref + "\x00" + entry.SkillPath
 }
 
 func readInstallHistory() (map[string][]installCandidate, error) {
@@ -162,7 +180,7 @@ func scanHistoryFile(path string, modified time.Time, result map[string][]instal
 	reader := bufio.NewReaderSize(file, 64*1024)
 	for {
 		line, readErr := reader.ReadBytes('\n')
-		if !bytes.Contains(line, []byte(githubInstaller)) {
+		if !bytes.Contains(line, []byte(githubInstaller)) && !bytes.Contains(line, []byte("skills")) {
 			if readErr == io.EOF {
 				return nil
 			}
@@ -172,10 +190,10 @@ func scanHistoryFile(path string, modified time.Time, result map[string][]instal
 			continue
 		}
 		for _, command := range trustedCommands(line) {
-			for _, candidate := range parseInstallerCommand(command) {
+			for _, candidate := range parseInstallCommand(command) {
 				candidate.When = modified
 				key := candidate.Name + "\x00" + candidate.Source + "\x00" + candidate.Ref + "\x00" + candidate.SkillPath
-				if candidate.Name == "" || seen[key] {
+				if seen[key] {
 					continue
 				}
 				seen[key] = true
@@ -232,8 +250,20 @@ func trustedCommands(line []byte) []string {
 	return commands
 }
 
+func parseInstallCommand(command string) []installCandidate {
+	var result []installCandidate
+	for _, segment := range shellCommandSegments(shellWords(command)) {
+		result = append(result, parseInstallerCommandWords(segment)...)
+		result = append(result, parseSkillsAddWords(segment)...)
+	}
+	return result
+}
+
 func parseInstallerCommand(command string) []installCandidate {
-	words := shellWords(command)
+	return parseInstallerCommandWords(shellWords(command))
+}
+
+func parseInstallerCommandWords(words []string) []installCandidate {
 	var result []installCandidate
 	for index, word := range words {
 		if filepath.Base(strings.ReplaceAll(word, `\`, "/")) != githubInstaller {
@@ -280,6 +310,182 @@ func parseInstallerCommand(command string) []installCandidate {
 			}
 			result = append(result, installCandidate{Name: candidateName, Source: source, Ref: ref, SkillPath: filepath.ToSlash(filepath.Clean(skillPath))})
 		}
+	}
+	return result
+}
+
+// parseSkillsAddCommand recognizes the public `skills add` interface when an
+// agent runs it through npx, npm exec, or bunx. The installer writes a lock
+// file for normal installs, but history remains useful when that file was
+// removed or a skill was copied into a host-specific directory afterwards.
+// An omitted --skill applies the verified source to any installed skill whose
+// contents match a skill discovered in that source.
+func parseSkillsAddCommand(command string) []installCandidate {
+	var result []installCandidate
+	for _, segment := range shellCommandSegments(shellWords(command)) {
+		result = append(result, parseSkillsAddWords(segment)...)
+	}
+	return result
+}
+
+func parseSkillsAddWords(words []string) []installCandidate {
+	arguments, ok := skillsAddArguments(words)
+	if !ok {
+		return nil
+	}
+	sourceArgument, selected := skillsAddOptions(arguments)
+	if sourceArgument == "" {
+		return nil
+	}
+	if len(selected) == 0 {
+		selected = sourceSkillFilter(sourceArgument)
+	}
+	source, ref, sourcePath := skillsSource(sourceArgument)
+	if source == "" {
+		return nil
+	}
+	if len(selected) == 0 {
+		return []installCandidate{{Source: source, Ref: ref, SkillPath: sourcePath}}
+	}
+	if slices.Contains(selected, "*") {
+		return []installCandidate{{Source: source, Ref: ref, SkillPath: sourcePath}}
+	}
+	result := make([]installCandidate, 0, len(selected))
+	for _, rawValue := range selected {
+		value := filepath.ToSlash(filepath.Clean(rawValue))
+		name := filepath.Base(value)
+		if name == "." || name == string(filepath.Separator) {
+			continue
+		}
+		candidate := installCandidate{Name: name, Source: source, Ref: ref}
+		if strings.Contains(value, "/") {
+			candidate.SkillPath = value
+		}
+		result = append(result, candidate)
+	}
+	return result
+}
+
+func skillsAddOptions(arguments []string) (string, []string) {
+	source := ""
+	var selected []string
+	for index := 0; index < len(arguments); index++ {
+		value := arguments[index]
+		if value == "--skill" || value == "-s" {
+			for index+1 < len(arguments) && !strings.HasPrefix(arguments[index+1], "-") {
+				if source == "" && looksLikeSkillsSource(arguments[index+1]) {
+					break
+				}
+				selected = append(selected, arguments[index+1])
+				index++
+			}
+			continue
+		}
+		if strings.HasPrefix(value, "--skill=") {
+			selected = append(selected, strings.TrimPrefix(value, "--skill="))
+			continue
+		}
+		if value == "--agent" || value == "-a" || value == "--dir" {
+			continue
+		}
+		if strings.HasPrefix(value, "-") {
+			continue
+		}
+		if source == "" && looksLikeSkillsSource(value) {
+			source = value
+		}
+	}
+	return source, selected
+}
+
+func looksLikeSkillsSource(value string) bool {
+	return strings.Contains(value, "://") || strings.HasPrefix(value, "git@") || filepath.IsAbs(value) || strings.HasPrefix(value, ".") || strings.Count(strings.TrimSuffix(value, ".git"), "/") == 1
+}
+
+func skillsSource(value string) (source, ref, skillPath string) {
+	if filepath.IsAbs(value) {
+		return value, "", ""
+	}
+	if strings.Contains(value, "://") {
+		if source, ref, skillPath = installerSource("", value, ""); source != "" {
+			return source, ref, skillPath
+		}
+		return value, "", ""
+	}
+	if repository, _, found := strings.Cut(value, "@"); found && strings.Count(repository, "/") == 1 {
+		return installerSource(repository, "", "")
+	}
+	return installerSource(value, "", "")
+}
+
+func sourceSkillFilter(value string) []string {
+	repository, skill, found := strings.Cut(value, "@")
+	if !found || skill == "" || strings.Count(repository, "/") != 1 {
+		return nil
+	}
+	return []string{skill}
+}
+
+func skillsAddArguments(words []string) ([]string, bool) {
+	words = skipEnvironmentPrefix(words)
+	if len(words) == 0 {
+		return nil, false
+	}
+	command := filepath.Base(words[0])
+	command, _, _ = strings.Cut(command, "@")
+	if command == "npx" || command == "bunx" {
+		for index := 1; index+1 < len(words); index++ {
+			name, _, _ := strings.Cut(filepath.Base(words[index]), "@")
+			if name == "skills" && isSkillsAddVerb(words[index+1]) {
+				return words[index+2:], true
+			}
+		}
+		return nil, false
+	}
+	if command != "npm" || len(words) < 2 || words[1] != "exec" {
+		return nil, false
+	}
+	for index := 2; index+2 < len(words); index++ {
+		name, _, _ := strings.Cut(filepath.Base(words[index+1]), "@")
+		if words[index] == "--" && name == "skills" && isSkillsAddVerb(words[index+2]) {
+			return words[index+3:], true
+		}
+		name, _, _ = strings.Cut(filepath.Base(words[index]), "@")
+		if name == "skills" && isSkillsAddVerb(words[index+2]) && words[index+1] == "--" {
+			return words[index+3:], true
+		}
+	}
+	return nil, false
+}
+
+func skipEnvironmentPrefix(words []string) []string {
+	if len(words) == 0 || filepath.Base(words[0]) != "env" {
+		return words
+	}
+	for index := 1; index < len(words); index++ {
+		if strings.Contains(words[index], "=") || strings.HasPrefix(words[index], "-") {
+			continue
+		}
+		return words[index:]
+	}
+	return nil
+}
+
+func isSkillsAddVerb(value string) bool {
+	return value == "add" || value == "install"
+}
+
+func shellCommandSegments(words []string) [][]string {
+	var result [][]string
+	for len(words) > 0 {
+		index := slices.IndexFunc(words, isShellOperator)
+		if index < 0 {
+			return append(result, words)
+		}
+		if index > 0 {
+			result = append(result, words[:index])
+		}
+		words = words[index+1:]
 	}
 	return result
 }
