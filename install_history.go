@@ -314,20 +314,6 @@ func parseInstallerCommandWords(words []string) []installCandidate {
 	return result
 }
 
-// parseSkillsAddCommand recognizes the public `skills add` interface when an
-// agent runs it through npx, npm exec, or bunx. The installer writes a lock
-// file for normal installs, but history remains useful when that file was
-// removed or a skill was copied into a host-specific directory afterwards.
-// An omitted --skill applies the verified source to any installed skill whose
-// contents match a skill discovered in that source.
-func parseSkillsAddCommand(command string) []installCandidate {
-	var result []installCandidate
-	for _, segment := range shellCommandSegments(shellWords(command)) {
-		result = append(result, parseSkillsAddWords(segment)...)
-	}
-	return result
-}
-
 func parseSkillsAddWords(words []string) []installCandidate {
 	arguments, ok := skillsAddArguments(words)
 	if !ok {
