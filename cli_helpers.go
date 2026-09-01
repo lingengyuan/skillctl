@@ -61,10 +61,6 @@ func stringSet(values []string) map[string]bool {
 	return result
 }
 
-func selectSkills(all []skill, names []string) ([]skill, error) {
-	return selectSkillsWithMode(all, names, false)
-}
-
 func selectSkillsWithMode(all []skill, names []string, allMatches bool) ([]skill, error) {
 	byName := map[string][]skill{}
 	for _, item := range all {

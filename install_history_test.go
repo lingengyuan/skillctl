@@ -42,7 +42,7 @@ func TestTrustedCommandsOnlyReadsStructuredToolCalls(t *testing.T) {
 
 func TestParseInstallerCommand(t *testing.T) {
 	command := "python3 /tmp/install-skill-from-github.py --repo Zeejay0/gathered-scenes-zine-skill --path skills/scenes-gathered-zine-v1-3 skills/scene-distillation-zine-v1-3"
-	got := parseInstallerCommand(command)
+	got := parseInstallCommand(command)
 	if len(got) != 2 || got[0].Name != "scenes-gathered-zine-v1-3" || got[1].Name != "scene-distillation-zine-v1-3" {
 		t.Fatalf("candidates = %#v", got)
 	}
@@ -51,17 +51,17 @@ func TestParseInstallerCommand(t *testing.T) {
 	}
 
 	urlCommand := "python3 /tmp/install-skill-from-github.py --url https://github.com/owner/repo/tree/v1/skills/demo --name renamed"
-	got = parseInstallerCommand(urlCommand)
+	got = parseInstallCommand(urlCommand)
 	if len(got) != 1 || got[0].Name != "renamed" || got[0].Ref != "v1" || got[0].SkillPath != "skills/demo" {
 		t.Fatalf("URL candidate = %#v", got)
 	}
 
-	if got := parseInstallerCommand("python3 /tmp/install-skill-from-github.py --help"); len(got) != 0 {
+	if got := parseInstallCommand("python3 /tmp/install-skill-from-github.py --help"); len(got) != 0 {
 		t.Fatalf("help command became candidate: %#v", got)
 	}
 
 	windowsCommand := `python "C:\Users\test\.codex\skills\.system\skill-installer\scripts\install-skill-from-github.py" --repo owner/repo --path skills/demo`
-	got = parseInstallerCommand(windowsCommand)
+	got = parseInstallCommand(windowsCommand)
 	if len(got) != 1 || got[0].Name != "demo" || got[0].Source != "https://github.com/owner/repo.git" {
 		t.Fatalf("Windows path candidate = %#v", got)
 	}

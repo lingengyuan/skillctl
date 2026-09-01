@@ -259,10 +259,6 @@ func parseInstallCommand(command string) []installCandidate {
 	return result
 }
 
-func parseInstallerCommand(command string) []installCandidate {
-	return parseInstallerCommandWords(shellWords(command))
-}
-
 func parseInstallerCommandWords(words []string) []installCandidate {
 	var result []installCandidate
 	for index, word := range words {

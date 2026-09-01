@@ -16,7 +16,7 @@ func TestSelectSkillsRejectsAmbiguousName(t *testing.T) {
 		{Name: "shared", Path: filepath.Join(root, "one")},
 		{Name: "shared", Path: filepath.Join(root, "two")},
 	}
-	if _, err := selectSkills(all, []string{"shared"}); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+	if _, err := selectSkillsWithMode(all, []string{"shared"}, false); err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("expected ambiguity error, got %v", err)
 	}
 	selected, err := selectSkillsWithMode(all, []string{"shared"}, true)
