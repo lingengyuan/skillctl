@@ -90,7 +90,7 @@ func TestIntegrationHistoryLifecycle(t *testing.T) {
 	if err := os.MkdirAll(sessions, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	record := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"python3 /tmp/install-skill-from-github.py --repo test/history --path skills/history-skill"}}]}}` + "\n"
+	record := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npx --yes skills add test/history -a codex -g -y"}}]}}` + "\n"
 	if err := os.WriteFile(filepath.Join(sessions, "session.jsonl"), []byte(record), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestIntegrationHistoryLifecycle(t *testing.T) {
 	if err := os.MkdirAll(codexSessions, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	codexRecord := `{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const r = await tools.shell_command({command:\"python3 /tmp/install-skill-from-github.py --repo test/history --path skills/history-skill\"}); text(r)"}}` + "\n"
+	codexRecord := `{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const r = await tools.shell_command({command:\"npx --yes skills add test/history -a codex -g -y\"}); text(r)"}}` + "\n"
 	if err := os.WriteFile(filepath.Join(codexSessions, "session.jsonl"), []byte(codexRecord), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -111,53 +111,61 @@ func (s *trackedState) put(entry trackedEntry) {
 }
 
 func trackCopiedSkill(ctx context.Context, item skill, source, ref, skillPath string, state *trackedState) error {
+	entry, err := verifyCopiedSkill(ctx, item, source, ref, skillPath)
+	if err != nil {
+		return err
+	}
+	state.put(entry)
+	return state.save()
+}
+
+func verifyCopiedSkill(ctx context.Context, item skill, source, ref, skillPath string) (trackedEntry, error) {
 	if source == "" {
-		return fmt.Errorf("track requires --source")
+		return trackedEntry{}, fmt.Errorf("track requires --source")
 	}
 	source = normalizeSource(source)
 	cache, err := syncWorktreeSource(ctx, source, ref)
 	if err != nil {
-		return err
+		return trackedEntry{}, err
 	}
 	if skillPath == "" {
 		skillPath, err = discoverSourceSkill(cache, item.Name)
 		if err != nil {
-			return err
+			return trackedEntry{}, err
 		}
 	}
 	remoteSkill, err := sourceSkillPath(cache, skillPath)
 	if err != nil {
-		return err
+		return trackedEntry{}, err
 	}
 	remoteName, readErr := readSkill(filepath.Join(remoteSkill, "SKILL.md"))
 	if readErr != nil || remoteName != item.Name {
-		return fmt.Errorf("source path does not contain skill %q", item.Name)
+		return trackedEntry{}, fmt.Errorf("source path does not contain skill %q", item.Name)
 	}
 	installedHash, err := hashDirectory(item.Path)
 	if err != nil {
-		return fmt.Errorf("hash installed skill: %w", err)
+		return trackedEntry{}, fmt.Errorf("hash installed skill: %w", err)
 	}
 	remoteHash, err := hashDirectory(remoteSkill)
 	if err != nil {
-		return fmt.Errorf("hash source skill: %w", err)
+		return trackedEntry{}, fmt.Errorf("hash source skill: %w", err)
 	}
 	if installedHash != remoteHash {
 		matched, err := matchesSourceHistory(cache, skillPath, installedHash)
 		if err != nil {
-			return err
+			return trackedEntry{}, err
 		}
 		if !matched {
-			return fmt.Errorf("local content does not match the source or its history")
+			return trackedEntry{}, fmt.Errorf("local content does not match the source or its history")
 		}
 	}
-	state.put(trackedEntry{
+	return trackedEntry{
 		Path:          filepath.Clean(item.Path),
 		Source:        source,
 		Ref:           ref,
 		SkillPath:     filepath.ToSlash(filepath.Clean(skillPath)),
 		InstalledHash: installedHash,
-	})
-	return state.save()
+	}, nil
 }
 
 func matchesSourceHistory(cache, skillPath, installedHash string) (bool, error) {
