@@ -27,6 +27,30 @@ Go：
 go install github.com/lingengyuan/skillctl@latest
 ```
 
+## 更新
+
+重新执行“安装”中的对应命令即可覆盖现有版本，并默认安装最新版。安装指定版本：
+
+macOS / Linux：
+
+```sh
+./install.sh --version v0.0.2
+```
+
+Windows PowerShell：
+
+```powershell
+.\install.ps1 -Version v0.0.2
+```
+
+通过 Go 安装的用户运行：
+
+```sh
+go install github.com/lingengyuan/skillctl@latest
+```
+
+Go 方式依赖 Go Module 网络；连接不稳定时优先使用安装脚本。更新后重新打开终端并运行 `skillctl version` 验证版本。
+
 ## 使用
 
 ```sh
