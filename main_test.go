@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,45 @@ import (
 	"testing"
 	"time"
 )
+
+func TestCheckSupportsWellKnownV2Source(t *testing.T) {
+	home := setTestHome(t)
+	root := filepath.Join(home, "skills")
+	writeTestSkill(t, filepath.Join(root, "lark-approval"), "lark-approval", "current")
+
+	remoteDigest := "sha256:" + strings.Repeat("b", 64)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/agent-skills/index.json" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"$schema":"https://schemas.agentskills.io/discovery/0.2.0/schema.json","skills":[{"name":"lark-approval","type":"archive","description":"approval","url":"./lark-approval.tar.gz","digest":%q}]}`, remoteDigest)
+	}))
+	defer server.Close()
+
+	lockPath := filepath.Join(home, ".agents", ".skill-lock.json")
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lock := fmt.Sprintf(`{"version":3,"skills":{"lark-approval":{"source":"example.test","sourceType":"well-known","sourceUrl":%q,"sourceBaseUrl":%q,"wellKnownDigest":"sha256:%s"}}}`, server.URL+"/.well-known/agent-skills/lark-approval.tar.gz", server.URL, strings.Repeat("a", 64))
+	if err := os.WriteFile(lockPath, []byte(lock), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(home, "config.toml")
+	config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"test\"\nscope = \"user\"\n[[manifests]]\nkind = \"vercel-skills-lock-v3\"\npath = %q\ninstall_root = %q\n", filepath.ToSlash(root), filepath.ToSlash(lockPath), filepath.ToSlash(root))
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"check", "--config", configPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("check failed (%d): stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "update available") || strings.Contains(stdout.String(), "updates unavailable") {
+		t.Fatalf("well-known source was not checked: %s", stdout.String())
+	}
+}
 
 func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 	home := setTestHome(t)

@@ -13,6 +13,17 @@ import (
 
 func inspect(ctx context.Context, networkTimeout time.Duration, action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, stdout, progress io.Writer) ([]report, bool) {
 	provenance, lockErrors := newProvenanceIndex(skills, state, manifests, managed)
+	var wellKnownTargets []wellKnownTarget
+	for _, item := range skills {
+		if item.Broken {
+			continue
+		}
+		claims := provenance.claims(item)
+		if claims.count() == 1 && claims.hasVercel && claims.vercel.Entry.SourceType == "well-known" {
+			wellKnownTargets = append(wellKnownTargets, wellKnownTarget{Item: item, Claim: claims.vercel, Evidence: claims.vercelEvidence})
+		}
+	}
+	wellKnownReports, wellKnownFailed := inspectWellKnown(ctx, networkTimeout, action, wellKnownTargets, state, progress)
 	session := newSourceSession(ctx, networkTimeout, progress)
 	defer session.close()
 	var sourceRequests []sourceRequest
@@ -37,7 +48,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 	session.prefetch(sourceRequests)
 	reports := make([]report, 0, len(skills))
 	remaining := make([]skill, 0, len(skills))
-	failed := false
+	failed := wellKnownFailed
 	errorPaths := slices.Sorted(maps.Keys(lockErrors))
 	for _, item := range skills {
 		if item.Broken {
@@ -139,6 +150,15 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			continue
 		}
 		if found {
+			if claim.Entry.SourceType == "well-known" {
+				if r, ok := wellKnownReports[item.Path]; ok {
+					reports = append(reports, r)
+				} else {
+					reports = append(reports, reportFor(item, "vercel-skills-lock-v3", "provider", evidence, "unknown", "provider check failed", false, "report-only", "well-known result missing"))
+					failed = true
+				}
+				continue
+			}
 			r := reportFor(item, "vercel-skills-lock-v3", "provider", evidence, "unknown", "provider check unsupported", false, "report-only", "")
 			r.Revision = claim.Entry.SkillFolderHash
 			if claim.Entry.SourceType != "github" && claim.Entry.SourceType != "git" {

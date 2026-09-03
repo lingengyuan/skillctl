@@ -24,10 +24,18 @@ type trackedEntry struct {
 	InstalledHash string `json:"installedHash"`
 }
 
+type providerBaseline struct {
+	Path          string `json:"path"`
+	Provider      string `json:"provider"`
+	Revision      string `json:"revision"`
+	InstalledHash string `json:"installedHash"`
+}
+
 type trackedState struct {
-	Version int            `json:"version"`
-	Skills  []trackedEntry `json:"skills"`
-	path    string
+	Version           int                `json:"version"`
+	Skills            []trackedEntry     `json:"skills"`
+	ProviderBaselines []providerBaseline `json:"providerBaselines,omitempty"`
+	path              string
 }
 
 func loadTrackedState() (*trackedState, error) {
@@ -59,6 +67,9 @@ func (s *trackedState) save() error {
 		return err
 	}
 	slices.SortFunc(s.Skills, func(a, b trackedEntry) int { return cmp.Compare(a.Path, b.Path) })
+	slices.SortFunc(s.ProviderBaselines, func(a, b providerBaseline) int {
+		return cmp.Or(cmp.Compare(a.Provider, b.Provider), cmp.Compare(a.Path, b.Path))
+	})
 	content, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
@@ -108,6 +119,28 @@ func (s *trackedState) put(entry trackedEntry) {
 		return
 	}
 	s.Skills = append(s.Skills, entry)
+}
+
+func (s *trackedState) findProviderBaseline(path, provider string) (*providerBaseline, bool) {
+	for i := range s.ProviderBaselines {
+		entry := &s.ProviderBaselines[i]
+		if entry.Provider == provider && samePath(entry.Path, path) {
+			return entry, true
+		}
+	}
+	return nil, false
+}
+
+func (s *trackedState) putProviderBaseline(entry providerBaseline) bool {
+	if existing, ok := s.findProviderBaseline(entry.Path, entry.Provider); ok {
+		if *existing == entry {
+			return false
+		}
+		*existing = entry
+		return true
+	}
+	s.ProviderBaselines = append(s.ProviderBaselines, entry)
+	return true
 }
 
 func trackCopiedSkill(ctx context.Context, item skill, source, ref, skillPath string, state *trackedState) error {

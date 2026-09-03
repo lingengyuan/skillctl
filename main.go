@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var version = "0.0.1"
+var version = "0.0.2"
 
 const defaultNetworkTimeout = 10 * time.Second
 
@@ -151,7 +151,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	ctx := context.Background()
-	mutating := command == "track" || command == "update" && !opt.DryRun
+	mutating := command == "check" || command == "track" || command == "update"
 	var operationLock *commandLock
 	if mutating {
 		operationLock, err = acquireCommandLock()

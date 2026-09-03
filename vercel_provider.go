@@ -27,9 +27,12 @@ type vercelLockEntry struct {
 	Source          string `json:"source"`
 	SourceType      string `json:"sourceType"`
 	SourceURL       string `json:"sourceUrl"`
+	SourceBaseURL   string `json:"sourceBaseUrl,omitempty"`
 	Ref             string `json:"ref"`
 	SkillPath       string `json:"skillPath"`
 	SkillFolderHash string `json:"skillFolderHash"`
+	WellKnownDigest string `json:"wellKnownDigest,omitempty"`
+	UpdatedAt       string `json:"updatedAt,omitempty"`
 }
 
 func vercelStatus(action string, available bool, drift string) string {
@@ -180,6 +183,7 @@ func sameVercelSource(left, right vercelLockEntry) bool {
 	return left.Source == right.Source &&
 		left.SourceType == right.SourceType &&
 		left.SourceURL == right.SourceURL &&
+		left.SourceBaseURL == right.SourceBaseURL &&
 		left.Ref == right.Ref &&
 		left.SkillPath == right.SkillPath
 }

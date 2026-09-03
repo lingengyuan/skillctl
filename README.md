@@ -76,7 +76,7 @@ skillctl track --from-history example-skill
 
 历史记录只提供候选来源；内容与当前版本或 Git 历史匹配后才会登记。除 Codex system installer 外，也会识别 Agent 通过 `npx skills add`、`npm exec skills -- add` 或 `bunx skills add` 执行的安装记录。程序不会读取普通对话文本，也不会根据名称猜测仓库。
 
-Git worktree、`skillctl track`、Vercel Skills v3 lock 和 `gh skill` metadata 支持安全更新。Vercel 更新需要 Node.js / `npx` 或全局 `skills` 命令；`gh skill` 更新需要 GitHub CLI。Vercel lock 中已知但无法由现有 Provider 更新的来源会显示为 `tracked source (updates unavailable)`，不会误报为未跟踪。Codex system skills 和通过 Codex curated cache 验证的 skills 只检查、不更新。无法确认来源的目录显示为 `local/untracked`。
+Git worktree、`skillctl track`、Vercel Skills v3 lock 和 `gh skill` metadata 支持安全更新。飞书使用的 Vercel `well-known` v0.2 tar.gz 来源按源批量检查和更新，并在首次确认上游版本未变化时保存本地内容基线；如果首次检查时上游已经变化且旧制品不可验证，更新会暂停，避免覆盖本地修改。Vercel 更新需要 Node.js / `npx` 或全局 `skills` 命令；`gh skill` 更新需要 GitHub CLI。Vercel lock 中其他已知但无法由现有 Provider 更新的来源会显示为 `tracked source (updates unavailable)`，不会误报为未跟踪。Codex system skills 和通过 Codex curated cache 验证的 skills 只检查、不更新。无法确认来源的目录显示为 `local/untracked`。
 
 ## 诊断
 
