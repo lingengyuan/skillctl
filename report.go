@@ -67,46 +67,45 @@ func attachSourceFailure(r *report, err error) {
 func finalizeReports(reports []report) []report {
 	for i := range reports {
 		reports[i].SchemaVersion = 1
-		reports[i].State, reports[i].ReasonCode = classifyReport(reports[i])
+		if reports[i].State == "" {
+			reports[i].State, reports[i].ReasonCode = classifyReport(reports[i])
+		}
 	}
 	return reports
 }
 
+// State is supplied by adapters. This fallback uses structured fields only;
+// presentation text and translated error messages never determine business state.
 func classifyReport(r report) (string, string) {
-	status := strings.ToLower(r.Status)
-	errorText := strings.ToLower(r.Error)
-	switch {
-	case r.Error != "" || strings.HasPrefix(status, "failed"):
-		switch {
-		case strings.Contains(errorText, "timeout") || strings.Contains(errorText, "deadline exceeded"):
-			return "error", "network_timeout"
-		case strings.Contains(errorText, "authentication") || strings.Contains(errorText, "permission denied") || strings.Contains(errorText, "could not read username"):
-			return "error", "authentication_failed"
-		case strings.Contains(errorText, "cache"):
-			return "error", "source_cache_error"
-		default:
-			return "error", "provider_error"
-		}
-	case strings.HasPrefix(status, "broken"):
-		return "broken", "broken_link"
-	case strings.Contains(status, "ambiguous"):
+	if r.Error != "" {
+		return "error", "provider_error"
+	}
+	if r.Provider == "ambiguous" {
 		return "ambiguous", "ambiguous_provenance"
-	case strings.Contains(status, "pinned"):
-		return "pinned", "pinned_revision"
-	case r.Drift == "modified" || strings.Contains(status, "modified") || strings.Contains(status, "dirty"):
+	}
+	if r.Drift == "broken" {
+		return "broken", "broken_link"
+	}
+	if r.Drift == "modified" {
 		return "modified", "local_changes"
-	case r.UpdateAvailable || strings.HasPrefix(status, "update available"):
+	}
+	if r.UpdateAvailable {
 		return "outdated", "upstream_changed"
-	case strings.Contains(status, "local/untracked"):
-		return "untracked", "missing_update_source"
-	case strings.HasPrefix(status, "tracked source (updates unavailable)"):
-		return "unknown", "updates_unavailable"
-	case strings.Contains(status, "diverged") || strings.Contains(status, "ahead by") || strings.Contains(status, "detached head") || strings.Contains(status, "no upstream") || strings.Contains(status, "blocked"):
-		return "blocked", "git_state_blocks_update"
-	case status == "up to date" || status == "updated" || strings.HasPrefix(status, "managed by") || status == "managed from local path":
-		return "current", ""
-	default:
-		return "unknown", ""
+	}
+	return "unknown", "not_checked"
+}
+
+func checkedReport(r *report) {
+	r.State, r.ReasonCode = "current", ""
+	if r.Drift == "modified" {
+		r.State, r.ReasonCode = "modified", "local_changes"
+	} else if r.UpdateAvailable {
+		r.State, r.ReasonCode = "outdated", "upstream_changed"
+	} else if r.Drift == "unknown" {
+		r.State, r.ReasonCode = "unknown", "local_baseline_unavailable"
+	}
+	if r.Error != "" {
+		r.State, r.ReasonCode = "error", "provider_error"
 	}
 }
 
@@ -332,6 +331,17 @@ func mergeReportGroup(group []report) report {
 	} else {
 		merged.FailureStage = ""
 	}
+	states := map[string]int{"error": 10, "invalid": 9, "broken": 8, "ambiguous": 7, "modified": 6, "blocked": 5, "outdated": 4, "unknown": 3, "untracked": 3, "pinned": 2, "disabled": 2, "managed": 1, "current": 0}
+	merged.State, merged.ReasonCode = "current", ""
+	for _, item := range group {
+		state, reason := item.State, item.ReasonCode
+		if state == "" {
+			state, reason = classifyReport(item)
+		}
+		if states[state] >= states[merged.State] {
+			merged.State, merged.ReasonCode = state, reason
+		}
+	}
 	return merged
 }
 
@@ -374,7 +384,7 @@ func (s *reportSink) markGit(items []skill, root string) {
 }
 
 func (s *reportSink) failure(item skill, message string) {
-	s.set([]skill{item}, "failed")
+	s.set([]skill{item}, "failed", "error", "provider_error", false)
 	for i := range s.reports {
 		if samePath(s.reports[i].Path, item.Path) {
 			s.reports[i].Error = message
@@ -384,17 +394,17 @@ func (s *reportSink) failure(item skill, message string) {
 
 func (s *reportSink) Write(p []byte) (int, error) { return len(p), nil }
 
-func (s *reportSink) set(items []skill, message string) {
+func (s *reportSink) set(items []skill, message, state, reason string, available bool) {
 	for _, item := range items {
 		for i := range s.reports {
 			if samePath(s.reports[i].Path, item.Path) {
-				s.reports[i].Status = message
-				s.reports[i].UpdateAvailable = strings.HasPrefix(message, "update available")
-				if strings.Contains(message, "modified") || strings.Contains(message, "dirty") {
-					s.reports[i].Drift = "modified"
+				r := &s.reports[i]
+				r.Status, r.State, r.ReasonCode, r.UpdateAvailable = message, state, reason, available
+				if state == "modified" {
+					r.Drift = "modified"
 				}
-				if strings.HasPrefix(message, "failed") {
-					s.reports[i].Error = message
+				if state == "error" {
+					r.Error = message
 				}
 				break
 			}

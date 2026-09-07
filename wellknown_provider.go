@@ -84,6 +84,7 @@ func inspectWellKnown(ctx context.Context, networkTimeout time.Duration, action 
 		reports[target.Item.Path] = r
 		if entry.SourceBaseURL == "" || !validWellKnownDigest(entry.WellKnownDigest) {
 			r.Status = "tracked source (updates unavailable): well-known"
+			r.State, r.ReasonCode = "unknown", "updates_unavailable"
 			reports[target.Item.Path] = r
 			continue
 		}
@@ -130,6 +131,7 @@ func inspectWellKnown(ctx context.Context, networkTimeout time.Duration, action 
 				continue
 			}
 			r.Status = vercelStatus(action, available, drift)
+			checkedReport(&r)
 			if action == "update" && available && drift == "unknown" {
 				r.Status = "update available, skipped (local baseline unavailable)"
 			}
@@ -179,6 +181,7 @@ func inspectWellKnown(ctx context.Context, networkTimeout time.Duration, action 
 			r.Drift = "clean"
 			r.UpdateAvailable = false
 			r.Status = "updated"
+			checkedReport(&r)
 			reports[item.Target.Item.Path] = r
 		}
 	}
@@ -188,6 +191,7 @@ func inspectWellKnown(ctx context.Context, networkTimeout time.Duration, action 
 
 func setWellKnownReportError(r *report, prefix string, err error) {
 	r.Error = oneLine(err.Error())
+	r.State, r.ReasonCode = "error", "provider_error"
 	r.Status = prefix + ": " + r.Error
 }
 
@@ -435,7 +439,7 @@ func extractWellKnownTarGzip(data []byte, destination string) error {
 	return nil
 }
 
-func updateWellKnownBatch(ctx context.Context, networkTimeout time.Duration, items []wellKnownInspection, state *trackedState, progress io.Writer) error {
+func updateWellKnownBatchNative(ctx context.Context, networkTimeout time.Duration, items []wellKnownInspection, state *trackedState, progress io.Writer) error {
 	manifestPath := items[0].Target.Claim.ManifestPath
 	baseURL := items[0].Target.Claim.Entry.SourceBaseURL
 	previousBaselines := slices.Clone(state.ProviderBaselines)
@@ -563,4 +567,21 @@ func scaledProviderTimeout(timeout time.Duration, count int) time.Duration {
 		return timeout
 	}
 	return timeout * time.Duration(count)
+}
+
+func updateWellKnownBatch(ctx context.Context, networkTimeout time.Duration, items []wellKnownInspection, state *trackedState, progress io.Writer) error {
+	if len(items) == 0 {
+		return nil
+	}
+	paths := []string{items[0].Target.Claim.ManifestPath, state.path}
+	affected := []string{}
+	for _, item := range items {
+		paths = appendUnique(paths, item.Target.Item.Path)
+		affected = append(affected, item.Target.Item.Name+": "+item.Target.Item.Path)
+	}
+	operation, err := beginExternalOperation("update well-known", paths, affected)
+	if err != nil {
+		return err
+	}
+	return operation.finishExternal(updateWellKnownBatchNative(ctx, networkTimeout, items, state, progress))
 }

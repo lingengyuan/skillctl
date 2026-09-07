@@ -128,7 +128,7 @@ type ghSkillUpdateRequest struct {
 
 var runGHSkillUpdater = executeGHSkillUpdater
 
-func updateGHSkillProvider(ctx context.Context, session *sourceSession, item skill, claim ghSkillClaim, progress io.Writer) (ghSkillClaim, error) {
+func updateGHSkillProviderNative(ctx context.Context, session *sourceSession, item skill, claim ghSkillClaim, progress io.Writer) (ghSkillClaim, error) {
 	snapshot, err := createDirectorySnapshot(item.Path)
 	if err != nil {
 		return ghSkillClaim{}, fmt.Errorf("create update backup: %w", err)
@@ -154,6 +154,8 @@ func updateGHSkillProvider(ctx context.Context, session *sourceSession, item ski
 			name, readErr := readSkill(filepath.Join(item.Path, "SKILL.md"))
 			if readErr != nil || name != item.Name {
 				err = fmt.Errorf("updated directory does not contain skill %q", item.Name)
+			} else if drift, checkErr := checkGHLocalDrift(session, result.Claim, item.Path); checkErr != nil || drift != "clean" {
+				err = fmt.Errorf("GitHub CLI content verification failed: drift=%s error=%v", drift, checkErr)
 			} else {
 				fmt.Fprintf(progress, "GitHub CLI update verified (%s).\n", time.Since(started).Round(time.Millisecond))
 				return result.Claim, nil
@@ -231,4 +233,16 @@ func (s *directorySnapshot) restore(installed string) error {
 		return err
 	}
 	return replacement.commit()
+}
+
+func updateGHSkillProvider(ctx context.Context, session *sourceSession, item skill, claim ghSkillClaim, progress io.Writer) (ghSkillClaim, error) {
+	operation, err := beginExternalOperation("update updateGHSkillProvider", []string{item.Path}, []string{item.Name + ": " + item.Path})
+	if err != nil {
+		return ghSkillClaim{}, err
+	}
+	result, err := updateGHSkillProviderNative(ctx, session, item, claim, progress)
+	if finishErr := operation.finishExternal(err); finishErr != nil {
+		return ghSkillClaim{}, finishErr
+	}
+	return result, nil
 }

@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 )
 
 type doctorFinding struct {
@@ -43,11 +42,25 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 		}
 	}
 
+	operations, historyErr := readOperations()
+	if historyErr != nil {
+		add("error", "operation_history_invalid", historyErr.Error(), "", "")
+	} else {
+		for _, operation := range operations {
+			switch operation.State {
+			case "preparing", "prepared", "applying", "external_applying", "native_applying", "recovery_required":
+				add("error", "operation_recovery_required", operation.ID+": "+operation.State, operation.directory, "")
+			}
+		}
+	}
 	byName := map[string][]skill{}
 	for _, item := range skills {
 		byName[item.Name] = append(byName[item.Name], item)
 		if item.Broken {
 			add("error", "broken_link", "skill link target is unavailable: "+item.LinkTarget, item.Path, item.Name)
+		}
+		if item.Invalid != "" {
+			add("error", item.IssueCode, item.Invalid, item.Path, item.Name)
 		}
 	}
 	names := slices.Sorted(maps.Keys(byName))
@@ -72,6 +85,10 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 	if stateErr != nil {
 		add("error", "tracked_state_invalid", oneLine(stateErr.Error()), "", "")
 	} else if state != nil {
+		catalog, catalogErr := loadCatalog()
+		if catalogErr != nil {
+			add("error", "inventory_invalid", catalogErr.Error(), "", "")
+		}
 		kept := make([]trackedEntry, 0, len(state.Skills))
 		changed := false
 		for _, entry := range state.Skills {
@@ -82,6 +99,13 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 				add("warning", "tracked_path_unreadable", oneLine(err.Error()), entry.Path, "")
 				kept = append(kept, entry)
 				continue
+			}
+			if catalog != nil {
+				if pkg := catalog.byPath(entry.Path); pkg != nil && len(pkg.Bindings) > 0 && currentPackageDirectory(*pkg) != pkg.Directory {
+					kept = append(kept, entry)
+					add("info", "tracked_installation_disabled", "source retained for disabled installation", entry.Path, "")
+					continue
+				}
 			}
 			if fix {
 				changed = true
@@ -94,7 +118,19 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 		}
 		if changed {
 			state.Skills = kept
-			if err := state.save(); err != nil {
+			change, err := mutation(state.path, "file")
+			if err == nil {
+				change.Data, err = trackedStateBytes(state)
+			}
+			if err == nil {
+				var operation *operationRecord
+				operation, err = prepareOperation("doctor remove stale sources", []pathMutation{change}, []string{state.path})
+				if err == nil {
+					err = operation.apply()
+				}
+			}
+			if err != nil {
+				fixed = 0
 				add("error", "tracked_state_save_failed", oneLine(err.Error()), state.path, "")
 			}
 		}
@@ -112,24 +148,10 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 		}
 	}
 
-	if configDir, err := os.UserConfigDir(); err == nil {
-		lockPath := filepath.Join(configDir, "skillctl", "operation.lock")
-		if info, statErr := os.Stat(lockPath); statErr == nil {
-			age := time.Since(info.ModTime())
-			if age > commandLockStaleAfter {
-				if fix {
-					if removeErr := os.Remove(lockPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-						add("error", "stale_lock_remove_failed", oneLine(removeErr.Error()), lockPath, "")
-					} else {
-						fixed++
-						add("fixed", "stale_lock_removed", "removed stale operation lock", lockPath, "")
-					}
-				} else {
-					add("warning", "stale_operation_lock", "operation lock is older than 24 hours; run doctor --fix to remove it", lockPath, "")
-				}
-			} else if !fix {
-				add("warning", "active_operation_lock", "an update or track operation may already be running", lockPath, "")
-			}
+	if configDir, err := skillctlDirectory(); err == nil && !fix {
+		lockPath := filepath.Join(configDir, "operation.lock")
+		if operationLockActive(lockPath) {
+			add("warning", "active_operation_lock", "another skillctl operation is running", lockPath, "")
 		}
 	}
 

@@ -64,14 +64,14 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 	writeTestSkill(t, filepath.Join(root, "invalid"), "invalid_name", "invalid skill")
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"check", "--json", "--path", root}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"check", "--json", "--path", root}, &stdout, &stderr); code != 1 {
 		t.Fatalf("check failed (%d): %s", code, stderr.String())
 	}
 	var reports []report
 	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
 		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
 	}
-	if len(reports) != 1 || reports[0].Identity != "declared-name" || reports[0].Provider != "local-authoring" || reports[0].Status != "local/untracked (no update source)" {
+	if len(reports) != 2 || reports[0].Identity != "declared-name" || reports[0].Provider != "local-authoring" || reports[0].Status != "local/untracked (no update source)" || reports[1].State != "invalid" {
 		t.Fatalf("unexpected report: %#v", reports)
 	}
 	if !strings.Contains(stderr.String(), `invalid name "invalid_name"`) {
@@ -80,7 +80,7 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"check", "--path", root}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"check", "--path", root}, &stdout, &stderr); code != 1 {
 		t.Fatalf("text check failed (%d): %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "skillctl track --source SOURCE_URL declared-name") {
@@ -547,6 +547,7 @@ func TestTrackedUpdateSafety(t *testing.T) {
 }
 
 func TestVercelUpdateRollsBackOnProviderFailure(t *testing.T) {
+	setTestHome(t)
 	dir := t.TempDir()
 	installed := filepath.Join(dir, "demo")
 	writeTestSkill(t, installed, "demo", "original")
@@ -583,6 +584,7 @@ func TestVercelUpdateRollsBackOnProviderFailure(t *testing.T) {
 }
 
 func TestGHSkillUpdateRollsBackOnProviderFailure(t *testing.T) {
+	setTestHome(t)
 	dir := t.TempDir()
 	installed := filepath.Join(dir, "demo")
 	writeTestSkill(t, installed, "demo", "original")
@@ -646,6 +648,7 @@ func BenchmarkScanUnmanagedSkills(b *testing.B) {
 }
 
 func newTrackedFixture(t *testing.T) (skill, *trackedState, *sourceSession, string) {
+	t.Setenv("SKILLCTL_HOME", t.TempDir())
 	t.Helper()
 	dir := t.TempDir()
 	installed := filepath.Join(dir, "installed", "demo")

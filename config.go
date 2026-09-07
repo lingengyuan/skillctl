@@ -122,6 +122,7 @@ type scanRoot struct {
 	Host     string `toml:"host"`
 	Scope    string `toml:"scope"`
 	Required bool   `toml:"required"`
+	Project  string `toml:"project"`
 }
 
 type manifest struct {
@@ -138,43 +139,19 @@ type managedRoot struct {
 func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, time.Duration, error) {
 	path := explicit
 	if path == "" {
-		dir, err := os.UserConfigDir()
+		dir, err := skillctlDirectory()
 		if err != nil {
 			return nil, nil, nil, 0, fmt.Errorf("find user config directory: %w", err)
 		}
-		path = filepath.Join(dir, "skillctl", "config.toml")
+		path = filepath.Join(dir, "config.toml")
 	}
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) && explicit == "" {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return nil, nil, nil, 0, fmt.Errorf("create config directory: %w", err)
-		}
-		if err := os.WriteFile(path, []byte(defaultConfig), 0o644); err != nil {
-			return nil, nil, nil, 0, fmt.Errorf("create default config: %w", err)
-		}
+	content, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) && explicit == "" {
+		content = []byte(defaultConfig)
 	} else if err != nil {
 		return nil, nil, nil, 0, fmt.Errorf("read config: %w", err)
 	}
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, nil, nil, 0, fmt.Errorf("read config: %w", err)
-	}
 	if string(content) == legacyDefaultConfig {
-		temp, err := os.CreateTemp(filepath.Dir(path), "config-*.toml")
-		if err != nil {
-			return nil, nil, nil, 0, fmt.Errorf("migrate legacy config: %w", err)
-		}
-		tempName := temp.Name()
-		defer os.Remove(tempName)
-		if _, err := temp.WriteString(defaultConfig); err != nil {
-			temp.Close()
-			return nil, nil, nil, 0, fmt.Errorf("migrate legacy config: %w", err)
-		}
-		if err := temp.Close(); err != nil {
-			return nil, nil, nil, 0, fmt.Errorf("migrate legacy config: %w", err)
-		}
-		if err := replaceFile(tempName, path); err != nil {
-			return nil, nil, nil, 0, fmt.Errorf("migrate legacy config: %w", err)
-		}
 		content = []byte(defaultConfig)
 	}
 	var cfg config
@@ -203,7 +180,16 @@ func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, time.Du
 		if cfg.Roots[i].Path == "" || cfg.Roots[i].Host == "" || cfg.Roots[i].Scope == "" {
 			return nil, nil, nil, 0, fmt.Errorf("invalid config: roots require path, host, and scope")
 		}
+		if cfg.Roots[i].Path == "~/.codex/skills" {
+			cfg.Roots[i].Path = filepath.Join(codexHomePath(), "skills")
+		}
+		if cfg.Roots[i].Path == "~/.claude/skills" && os.Getenv("CLAUDE_CONFIG_DIR") != "" {
+			cfg.Roots[i].Path = filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "skills")
+		}
 		cfg.Roots[i].Path = resolvePath(cfg.Roots[i].Path, base)
+		if cfg.Roots[i].Project != "" {
+			cfg.Roots[i].Project = resolvePath(cfg.Roots[i].Project, base)
+		}
 	}
 	if len(cfg.Manifests) == 0 {
 		if lockPath, lockErr := activeVercelLockPath(); lockErr == nil {
@@ -229,10 +215,26 @@ func loadConfig(explicit string) ([]scanRoot, []manifest, []managedRoot, time.Du
 		if cfg.ManagedRoots[i].Path == "" || cfg.ManagedRoots[i].Owner == "" {
 			return nil, nil, nil, 0, fmt.Errorf("invalid config: managed_roots require path and owner")
 		}
+		if cfg.ManagedRoots[i].Path == "~/.codex/skills/.system" {
+			cfg.ManagedRoots[i].Path = filepath.Join(codexHomePath(), "skills", ".system")
+		}
 		cfg.ManagedRoots[i].Path = resolvePath(cfg.ManagedRoots[i].Path, base)
 	}
 
 	return cfg.Roots, cfg.Manifests, cfg.ManagedRoots, networkTimeout, nil
+}
+
+// SKILLCTL_HOME isolates all persistent skillctl state, including its shared
+// store. Host configuration and credentials remain owned by their host.
+func skillctlDirectory() (string, error) {
+	if path := os.Getenv("SKILLCTL_HOME"); path != "" {
+		return filepath.Abs(path)
+	}
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "skillctl"), nil
 }
 
 func isDefaultVercelLockPath(value string) bool {
