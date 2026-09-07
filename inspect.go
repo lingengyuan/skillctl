@@ -145,9 +145,7 @@ func inspectDetailed(ctx context.Context, networkTimeout time.Duration, action s
 					attachSourceFailure(&r, err)
 					failed = true
 				} else if action == "update" && available && r.Drift == "clean" {
-					operationCtx, cancel := context.WithTimeout(ctx, networkTimeout)
-					updated, err := updateGHSkillProvider(operationCtx, session, item, ghClaim.Claim, progress)
-					cancel()
+					updated, err := updateGHSkillProvider(ctx, session, item, ghClaim.Claim, progress)
 					if err != nil {
 						r.Status = "GitHub skill update failed: " + oneLine(err.Error())
 						r.Error = oneLine(err.Error())
@@ -200,9 +198,7 @@ func inspectDetailed(ctx context.Context, networkTimeout time.Duration, action s
 					attachSourceFailure(&r, err)
 					failed = true
 				} else if action == "update" && available && drift == "clean" {
-					operationCtx, cancel := context.WithTimeout(ctx, networkTimeout)
-					updated, err := updateVercelProvider(operationCtx, session, item, claim, progress)
-					cancel()
+					updated, err := updateVercelProvider(ctx, session, item, claim, progress)
 					if err != nil {
 						r.Status = "provider update failed: " + oneLine(err.Error())
 						r.Error = oneLine(err.Error())

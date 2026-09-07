@@ -137,7 +137,9 @@ func updateGHSkillProviderNative(ctx context.Context, session *sourceSession, it
 
 	started := time.Now()
 	fmt.Fprintf(progress, "Updating %s with GitHub CLI...\n", item.Name)
-	_, err = runGHSkillUpdater(ctx, ghSkillUpdateRequest{Name: item.Name, Directory: item.Path}, progress)
+	operationCtx, cancel := context.WithTimeout(ctx, session.networkTimeout)
+	_, err = runGHSkillUpdater(operationCtx, ghSkillUpdateRequest{Name: item.Name, Directory: item.Path}, progress)
+	cancel()
 	if err == nil {
 		result := readGHSkillClaim(item)
 		if !result.Found || result.Err != nil {
@@ -236,7 +238,7 @@ func (s *directorySnapshot) restore(installed string) error {
 }
 
 func updateGHSkillProvider(ctx context.Context, session *sourceSession, item skill, claim ghSkillClaim, progress io.Writer) (ghSkillClaim, error) {
-	operation, err := beginExternalOperation("update updateGHSkillProvider", []string{item.Path}, []string{item.Name + ": " + item.Path})
+	operation, err := beginExternalOperation("update GitHub skill", []string{item.Path}, []string{item.Name + ": " + item.Path})
 	if err != nil {
 		return ghSkillClaim{}, err
 	}

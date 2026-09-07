@@ -73,7 +73,9 @@ func updateVercelProviderNative(ctx context.Context, session *sourceSession, ite
 
 	started := time.Now()
 	fmt.Fprintf(progress, "Updating %s with Vercel Skills...\n", claim.Name)
-	_, err = runVercelUpdater(ctx, vercelUpdateRequest{Name: claim.Name, ManifestPath: claim.ManifestPath}, progress)
+	operationCtx, cancel := context.WithTimeout(ctx, session.networkTimeout)
+	_, err = runVercelUpdater(operationCtx, vercelUpdateRequest{Name: claim.Name, ManifestPath: claim.ManifestPath}, progress)
+	cancel()
 	if err != nil {
 		fmt.Fprintf(progress, "Vercel Skills update failed (%s).\n", time.Since(started).Round(time.Millisecond))
 		return vercelLockEntry{}, snapshot.fail(item.Path, claim.ManifestPath, err)

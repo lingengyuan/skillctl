@@ -163,9 +163,7 @@ func inspectWellKnown(ctx context.Context, networkTimeout time.Duration, action 
 		if len(eligible) == 0 {
 			continue
 		}
-		operationCtx, cancel := context.WithTimeout(ctx, scaledProviderTimeout(networkTimeout, len(eligible)))
-		err := updateWellKnownBatch(operationCtx, networkTimeout, eligible, state, progress)
-		cancel()
+		err := updateWellKnownBatch(ctx, networkTimeout, eligible, state, progress)
 		if err != nil {
 			for _, item := range eligible {
 				r := reports[item.Target.Item.Path]
@@ -486,8 +484,11 @@ func updateWellKnownBatchNative(ctx context.Context, networkTimeout time.Duratio
 	slices.Sort(names)
 	started := time.Now()
 	fmt.Fprintf(progress, "Updating %d skills from %s with Vercel Skills...\n", len(names), sourceDisplayLabel(baseURL, ""))
-	if _, err := runWellKnownUpdater(ctx, wellKnownUpdateRequest{Names: names, SourceBaseURL: baseURL, ManifestPath: manifestPath}, progress); err != nil {
-		return rollback(err)
+	operationCtx, cancel := context.WithTimeout(ctx, scaledProviderTimeout(networkTimeout, len(items)))
+	_, updateErr := runWellKnownUpdater(operationCtx, wellKnownUpdateRequest{Names: names, SourceBaseURL: baseURL, ManifestPath: manifestPath}, progress)
+	cancel()
+	if updateErr != nil {
+		return rollback(updateErr)
 	}
 
 	for _, item := range items {
