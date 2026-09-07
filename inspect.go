@@ -11,11 +11,11 @@ import (
 	"time"
 )
 
-func inspect(ctx context.Context, networkTimeout time.Duration, action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, stdout, progress io.Writer) ([]report, bool) {
+func inspectDetailed(ctx context.Context, networkTimeout time.Duration, action string, skills []skill, state *trackedState, manifests []manifest, managed []managedRoot, progress io.Writer) ([]report, bool) {
 	provenance, lockErrors := newProvenanceIndex(skills, state, manifests, managed)
 	var wellKnownTargets []wellKnownTarget
 	for _, item := range skills {
-		if item.Broken {
+		if item.Broken || item.Invalid != "" {
 			continue
 		}
 		claims := provenance.claims(item)
@@ -28,7 +28,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 	defer session.close()
 	var sourceRequests []sourceRequest
 	for _, item := range skills {
-		if item.Broken {
+		if item.Broken || item.Invalid != "" {
 			continue
 		}
 		claims := provenance.claims(item)
@@ -51,6 +51,13 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 	failed := wellKnownFailed
 	errorPaths := slices.Sorted(maps.Keys(lockErrors))
 	for _, item := range skills {
+		if item.Invalid != "" {
+			r := reportFor(item, "filesystem", "unknown", nil, "unknown", "invalid skill", false, "report-only", item.Invalid)
+			r.State, r.ReasonCode = "invalid", item.IssueCode
+			reports = append(reports, r)
+			failed = true
+			continue
+		}
 		if item.Broken {
 			reports = append(reports, reportFor(item, "filesystem", "unknown", nil, "broken", "broken link -> "+item.LinkTarget, false, "report-only", ""))
 			continue
@@ -95,12 +102,15 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			continue
 		}
 		if owner != "" {
-			reports = append(reports, reportFor(item, "codex-host", "host", managedEvidence, "none", "managed by "+owner, false, "report-only", ""))
+			r := reportFor(item, "codex-host", "host", managedEvidence, "none", "managed by "+owner, false, "report-only", "")
+			r.State, r.ReasonCode = "managed", "host_managed"
+			reports = append(reports, r)
 			continue
 		}
 		if hasHostClaim {
 			r := reportFor(item, hostClaim.Provider, hostClaim.Owner, hostClaim.Evidence, "clean", "managed by codex", false, "report-only", "")
 			r.Revision = hostClaim.Revision
+			r.State, r.ReasonCode = "managed", "host_managed"
 			reports = append(reports, r)
 			continue
 		}
@@ -110,40 +120,52 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			r.Revision = ghClaim.Claim.TreeSHA
 			if ghClaim.Err != nil {
 				r.Error = oneLine(ghClaim.Err.Error())
+				r.State, r.ReasonCode = "invalid", "invalid_provider_metadata"
 				r.Status += ": " + r.Error
 				failed = true
 			} else if ghClaim.Claim.LocalPath != "" {
 				r.Status = "managed from local path"
+				r.State, r.ReasonCode = "managed", "host_managed"
 			} else if ghClaim.Claim.Pinned {
 				r.Status = "pinned"
+				r.State, r.ReasonCode = "pinned", "pinned_revision"
 				r.Executor = "gh-skill-cli"
 			} else {
 				r.Executor = "gh-skill-cli"
 				available, err := checkGHSkill(session, ghClaim.Claim)
 				r.UpdateAvailable = available
+				if err == nil {
+					r.Drift, err = checkGHLocalDrift(session, ghClaim.Claim, item.Path)
+				}
+				checkedReport(&r)
 				if err != nil {
 					r.Status = "GitHub skill check failed: " + oneLine(err.Error())
 					r.Error = oneLine(err.Error())
+					r.State, r.ReasonCode = "error", "provider_error"
 					attachSourceFailure(&r, err)
 					failed = true
-				} else if action == "update" && available {
-					operationCtx, cancel := context.WithTimeout(ctx, networkTimeout)
-					updated, err := updateGHSkillProvider(operationCtx, session, item, ghClaim.Claim, progress)
-					cancel()
+				} else if action == "update" && available && r.Drift == "clean" {
+					updated, err := updateGHSkillProvider(ctx, session, item, ghClaim.Claim, progress)
 					if err != nil {
 						r.Status = "GitHub skill update failed: " + oneLine(err.Error())
 						r.Error = oneLine(err.Error())
+						r.State, r.ReasonCode = "error", "provider_error"
 						attachSourceFailure(&r, err)
 						failed = true
 					} else {
 						r.Revision = updated.TreeSHA
 						r.UpdateAvailable = false
 						r.Status = "updated"
+						checkedReport(&r)
 					}
+				} else if r.Drift == "modified" {
+					r.Status = vercelStatus(action, available, r.Drift)
+					checkedReport(&r)
 				} else if available {
 					r.Status = "update available"
 				} else {
 					r.Status = "up to date"
+					checkedReport(&r)
 				}
 			}
 			reports = append(reports, r)
@@ -163,6 +185,7 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 			r.Revision = claim.Entry.SkillFolderHash
 			if claim.Entry.SourceType != "github" && claim.Entry.SourceType != "git" {
 				r.Status = "tracked source (updates unavailable): " + claim.Entry.SourceType
+				r.State, r.ReasonCode = "unknown", "updates_unavailable"
 			} else {
 				r.Executor = "vercel-skills-cli"
 				available, drift, err := checkVercelEntry(session, claim.Entry, item.Path)
@@ -171,15 +194,15 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 				if err != nil {
 					r.Status = "provider check failed: " + oneLine(err.Error())
 					r.Error = oneLine(err.Error())
+					r.State, r.ReasonCode = "error", "provider_error"
 					attachSourceFailure(&r, err)
 					failed = true
 				} else if action == "update" && available && drift == "clean" {
-					operationCtx, cancel := context.WithTimeout(ctx, networkTimeout)
-					updated, err := updateVercelProvider(operationCtx, session, item, claim, progress)
-					cancel()
+					updated, err := updateVercelProvider(ctx, session, item, claim, progress)
 					if err != nil {
 						r.Status = "provider update failed: " + oneLine(err.Error())
 						r.Error = oneLine(err.Error())
+						r.State, r.ReasonCode = "error", "provider_error"
 						attachSourceFailure(&r, err)
 						failed = true
 					} else {
@@ -187,9 +210,11 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 						r.Drift = "clean"
 						r.UpdateAvailable = false
 						r.Status = "updated"
+						checkedReport(&r)
 					}
 				} else {
 					r.Status = vercelStatus(action, available, r.Drift)
+					checkedReport(&r)
 				}
 			}
 			reports = append(reports, r)
@@ -203,13 +228,10 @@ func inspect(ctx context.Context, networkTimeout time.Duration, action string, s
 		failed = processGit(action, remaining, state, session, sink, sink) || failed
 		reports = append(reports, sink.reports...)
 	}
-	reports = mergeReportsByIdentity(reports)
 	slices.SortFunc(reports, func(a, b report) int {
 		return cmp.Or(cmp.Compare(a.Identity, b.Identity), cmp.Compare(a.Path, b.Path))
 	})
-	printReports(stdout, reports)
-	printTrackRepairHint(stdout, reports)
-	return reports, failed
+	return finalizeReports(reports), failed
 }
 
 func printTrackRepairHint(w io.Writer, reports []report) {

@@ -36,14 +36,15 @@ type trackedState struct {
 	Skills            []trackedEntry     `json:"skills"`
 	ProviderBaselines []providerBaseline `json:"providerBaselines,omitempty"`
 	path              string
+	readOnly          bool
 }
 
 func loadTrackedState() (*trackedState, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := skillctlDirectory()
 	if err != nil {
 		return nil, fmt.Errorf("find user config directory: %w", err)
 	}
-	path := filepath.Join(dir, "skillctl", "sources.json")
+	path := filepath.Join(dir, "sources.json")
 	state := &trackedState{Version: 1, path: path}
 	content, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -58,11 +59,19 @@ func loadTrackedState() (*trackedState, error) {
 	if state.Version != 1 {
 		return nil, fmt.Errorf("unsupported source state version: %d", state.Version)
 	}
+	for _, entry := range state.Skills {
+		if err := validateSourceURL(entry.Source); err != nil {
+			return nil, err
+		}
+	}
 	state.path = path
 	return state, nil
 }
 
 func (s *trackedState) save() error {
+	if s.readOnly {
+		return nil
+	}
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
 		return err
 	}
@@ -92,6 +101,9 @@ func (s *trackedState) save() error {
 }
 
 func (s *trackedState) find(path string) (*trackedEntry, bool) {
+	if s == nil {
+		return nil, false
+	}
 	clean := filepath.Clean(path)
 	for i := range s.Skills {
 		if samePath(s.Skills[i].Path, clean) {
@@ -153,6 +165,9 @@ func trackCopiedSkill(ctx context.Context, item skill, source, ref, skillPath st
 }
 
 func verifyCopiedSkill(ctx context.Context, item skill, source, ref, skillPath string) (trackedEntry, error) {
+	if err := validateSourceURL(source); err != nil {
+		return trackedEntry{}, err
+	}
 	if source == "" {
 		return trackedEntry{}, fmt.Errorf("track requires --source")
 	}
@@ -247,7 +262,7 @@ func processTracked(action string, items []skill, state *trackedState, session *
 	for _, item := range items {
 		entry, ok := state.findSkill(item)
 		if !ok {
-			printSkills(stdout, []skill{item}, "local/untracked (no update source)")
+			printSkills(stdout, []skill{item}, "local/untracked (no update source)", "untracked", "missing_update_source", false)
 			continue
 		}
 		cache, err := session.source(entry.Source, entry.Ref)
@@ -282,44 +297,28 @@ func processTracked(action string, items []skill, state *trackedState, session *
 		}
 		if localHash != entry.InstalledHash {
 			if remoteHash != entry.InstalledHash {
-				printSkills(stdout, []skill{item}, "update available, skipped (local files were modified)")
+				printSkills(stdout, []skill{item}, "update available, skipped (local files were modified)", "modified", "local_changes", true)
 			} else {
-				printSkills(stdout, []skill{item}, "skipped (local files were modified)")
+				printSkills(stdout, []skill{item}, "skipped (local files were modified)", "modified", "local_changes", false)
 			}
 			continue
 		}
 		if remoteHash == entry.InstalledHash {
-			printSkills(stdout, []skill{item}, "up to date")
+			printSkills(stdout, []skill{item}, "up to date", "current", "", false)
 			continue
 		}
 		if action == "check" {
-			printSkills(stdout, []skill{item}, "update available")
+			printSkills(stdout, []skill{item}, "update available", "outdated", "upstream_changed", true)
 			continue
 		}
-		replacement, err := beginDirectoryReplacement(item.Path, remoteSkill)
-		if err != nil {
-			reportFailure(stderr, item, "replace skill: "+oneLine(err.Error()))
+
+		if err := trackedUpdateTransaction(item, entry, state, remoteSkill, remoteHash); err != nil {
+			reportFailure(stderr, item, "save source state/update content: "+oneLine(err.Error()))
 			failed = true
 			continue
 		}
-		previousHash := entry.InstalledHash
-		entry.InstalledHash = remoteHash
-		if err := state.save(); err != nil {
-			entry.InstalledHash = previousHash
-			if rollbackErr := replacement.rollback(); rollbackErr != nil {
-				reportFailure(stderr, item, "save source state: "+oneLine(err.Error())+"; rollback skill: "+oneLine(rollbackErr.Error()))
-			} else {
-				reportFailure(stderr, item, "save source state: "+oneLine(err.Error()))
-			}
-			failed = true
-			continue
-		}
-		if err := replacement.commit(); err != nil {
-			reportFailure(stderr, item, "remove skill backup: "+oneLine(err.Error()))
-			failed = true
-			continue
-		}
-		printSkills(stdout, []skill{item}, "updated")
+
+		printSkills(stdout, []skill{item}, "updated", "current", "", false)
 	}
 	return failed
 }
@@ -424,9 +423,14 @@ func discoverSourceSkill(cache, name string) (string, error) {
 }
 
 func hashDirectory(root string) (string, error) {
+	var err error
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
 	hash := sha256.New()
 	var paths []string
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -561,8 +565,14 @@ func copyDirectory(source, target string) error {
 }
 
 func samePath(left, right string) bool {
+	left, right = canonicalLocation(left), canonicalLocation(right)
 	if filepath.Separator == '\\' {
 		return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
 	}
 	return filepath.Clean(left) == filepath.Clean(right)
+}
+
+func trackedStateBytes(state *trackedState) ([]byte, error) {
+	data, err := json.MarshalIndent(state, "", "  ")
+	return append(data, '\n'), err
 }

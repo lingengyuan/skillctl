@@ -3,120 +3,142 @@ package main
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 )
 
 func parseCommand(args []string, stderr io.Writer) (options, int) {
 	var opt options
-	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
-		switch args[0] {
-		case "--help":
+	fail := func(err error) (options, int) { fmt.Fprintln(stderr, err); return options{}, 2 }
+	for len(args) > 0 {
+		arg := args[0]
+		args = args[1:]
+		if arg == "--" {
+			opt.Names = append(opt.Names, args...)
+			break
+		}
+		if !strings.HasPrefix(arg, "-") {
+			opt.Names = append(opt.Names, arg)
+			continue
+		}
+		key, value, inline := strings.Cut(arg, "=")
+		boolean := true
+		switch key {
+		case "--help", "-h":
 			opt.Help = true
-			args = args[1:]
-		case "--path":
-			if len(args) < 2 {
-				fmt.Fprintln(stderr, "--path requires a directory")
-				return options{}, 2
-			}
-			opt.Paths = append(opt.Paths, args[1])
-			args = args[2:]
-		case "--config":
-			if len(args) < 2 {
-				fmt.Fprintln(stderr, "--config requires a file")
-				return options{}, 2
-			}
-			opt.ConfigPath = args[1]
-			args = args[2:]
-		case "--host":
-			if len(args) < 2 {
-				fmt.Fprintln(stderr, "--host requires a host name")
-				return options{}, 2
-			}
-			opt.Hosts = append(opt.Hosts, args[1])
-			args = args[2:]
-		case "--scope":
-			if len(args) < 2 {
-				fmt.Fprintln(stderr, "--scope requires a scope")
-				return options{}, 2
-			}
-			opt.Scopes = append(opt.Scopes, args[1])
-			args = args[2:]
-		case "--json":
+		case "--json", "-j":
 			opt.JSON = true
-			args = args[1:]
 		case "--dry-run":
 			opt.DryRun = true
-			args = args[1:]
 		case "--all-matches":
 			opt.AllMatches = true
-			args = args[1:]
 		case "--fix":
 			opt.Fix = true
-			args = args[1:]
-		case "--timeout":
-			if len(args) < 2 {
-				fmt.Fprintln(stderr, "--timeout requires a positive duration")
-				return options{}, 2
-			}
-			duration, err := time.ParseDuration(args[1])
-			if err != nil || duration <= 0 {
-				fmt.Fprintln(stderr, "--timeout requires a positive duration, for example 10s")
-				return options{}, 2
-			}
-			opt.Timeout = duration
-			args = args[2:]
-		case "--source":
-			if len(args) < 2 {
-				fmt.Fprintln(stderr, "--source requires a Git URL or path")
-				return options{}, 2
-			}
-			opt.Source = args[1]
-			args = args[2:]
-		case "--ref":
-			if len(args) < 2 {
-				fmt.Fprintln(stderr, "--ref requires a branch, tag, or commit")
-				return options{}, 2
-			}
-			opt.Ref = args[1]
-			args = args[2:]
-		case "--skill-path":
-			if len(args) < 2 {
-				fmt.Fprintln(stderr, "--skill-path requires a repository-relative path")
-				return options{}, 2
-			}
-			opt.SkillPath = args[1]
-			args = args[2:]
 		case "--from-history":
 			opt.FromHistory = true
-			args = args[1:]
+		case "--no-history":
+			opt.NoHistory = true
+		case "--copy":
+			opt.Copy = true
+		case "--offline":
+			opt.Offline = true
+		case "--frozen":
+			opt.Frozen = true
+		case "--package":
+			opt.Package = true
+		case "--global", "-g":
+			opt.Scopes = append(opt.Scopes, "user")
 		default:
-			fmt.Fprintf(stderr, "unknown option: %s\n", args[0])
-			return options{}, 2
+			boolean = false
+		}
+		if boolean {
+			if inline {
+				return fail(fmt.Errorf("%s does not take a value", key))
+			}
+			continue
+		}
+		switch key {
+		case "--path", "--config", "--host", "--agent", "-a", "--scope", "--timeout", "--source", "--ref", "--skill-path", "--skill", "-s", "--project", "--file", "--profile", "--output", "-o", "--json-version":
+		default:
+			return fail(fmt.Errorf("unknown option: %s", key))
+		}
+		if !inline {
+			if len(args) == 0 || strings.HasPrefix(args[0], "--") {
+				return fail(fmt.Errorf("%s requires a value", key))
+			}
+			value, args = args[0], args[1:]
+		}
+		if value == "" {
+			return fail(fmt.Errorf("%s requires a non-empty value", key))
+		}
+		switch key {
+		case "--path":
+			opt.Paths = append(opt.Paths, value)
+		case "--config":
+			opt.ConfigPath = value
+		case "--host", "--agent", "-a":
+			opt.Hosts = append(opt.Hosts, canonicalHost(value))
+		case "--scope":
+			opt.Scopes = append(opt.Scopes, value)
+		case "--source":
+			opt.Source = value
+		case "--ref":
+			opt.Ref = value
+		case "--skill-path":
+			opt.SkillPath = value
+		case "--skill", "-s":
+			opt.Skills = append(opt.Skills, value)
+		case "--project":
+			opt.Project = value
+		case "--file":
+			opt.File = value
+		case "--profile":
+			opt.Profile = value
+		case "--output", "-o":
+			opt.Output = value
+		case "--json-version":
+			n, err := strconv.Atoi(value)
+			if err != nil || (n != 1 && n != 2) {
+				return fail(fmt.Errorf("--json-version must be 1 or 2"))
+			}
+			opt.JSON, opt.JSONVersion = true, n
+		case "--timeout":
+			duration, err := time.ParseDuration(value)
+			if err != nil || duration <= 0 {
+				return fail(fmt.Errorf("--timeout requires a positive duration, for example 10s"))
+			}
+			opt.Timeout = duration
 		}
 	}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			fmt.Fprintln(stderr, "options must appear before skill names")
-			return options{}, 2
-		}
-	}
-	opt.Names = args
 	return opt, 0
 }
 
 func validateOptions(command string, opt options) error {
-	if opt.DryRun && command != "update" {
-		return fmt.Errorf("--dry-run is only valid with update")
+	if opt.Offline && command == "track" {
+		return fmt.Errorf("track requires source verification; use check --offline for local inventory")
+	}
+	if command == "sync" && len(opt.Names) > 0 {
+		return fmt.Errorf("sync takes --file and --profile, not positional skill names")
+	}
+	if opt.Package && command != "update" && command != "enable" && command != "disable" && command != "remove" {
+		return fmt.Errorf("--package is only valid for native package operations")
+	}
+
+	if opt.DryRun && !isWriteCommand(command) && command != "check" && command != "track" && !(command == "doctor" && opt.Fix) {
+		return fmt.Errorf("--dry-run is not valid with %s", command)
 	}
 	if opt.Fix && command != "doctor" {
 		return fmt.Errorf("--fix is only valid with doctor")
 	}
-	if command != "track" && (opt.Source != "" || opt.Ref != "" || opt.SkillPath != "" || opt.FromHistory) {
-		return fmt.Errorf("--source, --ref, --skill-path, and --from-history are only valid with track")
+	if opt.FromHistory && command != "track" {
+		return fmt.Errorf("--from-history is only valid with track")
 	}
-	if command == "track" && opt.JSON {
-		return fmt.Errorf("--json is not supported with track")
+	if opt.Source != "" && command != "track" && command != "search" {
+		return fmt.Errorf("--source is only valid with track or search")
+	}
+	if (opt.Ref != "" || opt.SkillPath != "") && command != "track" && command != "install" && command != "pin" {
+		return fmt.Errorf("--ref/--skill-path are only valid with track, install, or pin")
 	}
 	if opt.FromHistory && (opt.Source != "" || opt.Ref != "" || opt.SkillPath != "") {
 		return fmt.Errorf("--from-history cannot be combined with --source, --ref, or --skill-path")
@@ -124,5 +146,17 @@ func validateOptions(command string, opt options) error {
 	if opt.AllMatches && len(opt.Names) == 0 {
 		return fmt.Errorf("--all-matches requires at least one skill name")
 	}
+	if opt.Frozen && command != "sync" && command != "import" {
+		return fmt.Errorf("--frozen is only valid with sync or import")
+	}
 	return nil
+}
+
+func isWriteCommand(command string) bool {
+	switch command {
+	case "update", "install", "remove", "enable", "disable", "pin", "unpin", "rollback", "sync", "import", "export", "profile", "config":
+		return true
+	default:
+		return false
+	}
 }

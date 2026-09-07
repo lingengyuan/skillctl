@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -64,14 +65,14 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 	writeTestSkill(t, filepath.Join(root, "invalid"), "invalid_name", "invalid skill")
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"check", "--json", "--path", root}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"check", "--json", "--path", root}, &stdout, &stderr); code != 1 {
 		t.Fatalf("check failed (%d): %s", code, stderr.String())
 	}
 	var reports []report
 	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
 		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
 	}
-	if len(reports) != 1 || reports[0].Identity != "declared-name" || reports[0].Provider != "local-authoring" || reports[0].Status != "local/untracked (no update source)" {
+	if len(reports) != 2 || reports[0].Identity != "declared-name" || reports[0].Provider != "local-authoring" || reports[0].Status != "local/untracked (no update source)" || reports[1].State != "invalid" {
 		t.Fatalf("unexpected report: %#v", reports)
 	}
 	if !strings.Contains(stderr.String(), `invalid name "invalid_name"`) {
@@ -80,7 +81,7 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"check", "--path", root}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"check", "--path", root}, &stdout, &stderr); code != 1 {
 		t.Fatalf("text check failed (%d): %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "skillctl track --source SOURCE_URL declared-name") {
@@ -408,100 +409,114 @@ func TestCheckReportsProgressAndHonorsTimeout(t *testing.T) {
 }
 
 func TestUpdateAppliesTimeoutPerProviderOperation(t *testing.T) {
-	home := setTestHome(t)
-	root := filepath.Join(home, "skills")
-	sourceRoot := filepath.Join(home, "source")
-	installed := map[string]string{}
-	remoteHashes := map[string]string{}
-	lock := vercelLock{Version: 3, Skills: map[string]vercelLockEntry{}}
-	for _, name := range []string{"first-skill", "second-skill"} {
-		installed[name] = filepath.Join(root, name)
-		writeTestSkill(t, installed[name], name, "old")
-		installedHash, err := hashDirectory(installed[name])
-		if err != nil {
+	synctest.Test(t, func(t *testing.T) {
+		home := setTestHome(t)
+		root := filepath.Join(home, "skills")
+		sourceRoot := filepath.Join(home, "source")
+		installed := map[string]string{}
+		remoteHashes := map[string]string{}
+		lock := vercelLock{Version: 3, Skills: map[string]vercelLockEntry{}}
+		for _, name := range []string{"first-skill", "second-skill"} {
+			installed[name] = filepath.Join(root, name)
+			writeTestSkill(t, installed[name], name, "old")
+			installedHash, err := hashDirectory(installed[name])
+			if err != nil {
+				t.Fatal(err)
+			}
+			remote := filepath.Join(sourceRoot, name)
+			writeTestSkill(t, remote, name, "new")
+			remoteHashes[name], err = hashDirectory(remote)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lock.Skills[name] = vercelLockEntry{
+				SourceType:      "git",
+				SourceURL:       "fixture",
+				SkillPath:       filepath.ToSlash(filepath.Join(name, "SKILL.md")),
+				SkillFolderHash: installedHash,
+			}
+		}
+
+		lockPath := filepath.Join(home, ".agents", ".skill-lock.json")
+		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		remote := filepath.Join(sourceRoot, name)
-		writeTestSkill(t, remote, name, "new")
-		remoteHashes[name], err = hashDirectory(remote)
-		if err != nil {
+		writeLock := func(value vercelLock) error {
+			content, err := json.Marshal(value)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(lockPath, content, 0o600)
+		}
+		if err := writeLock(lock); err != nil {
 			t.Fatal(err)
 		}
-		lock.Skills[name] = vercelLockEntry{
-			SourceType:      "git",
-			SourceURL:       "fixture",
-			SkillPath:       filepath.ToSlash(filepath.Join(name, "SKILL.md")),
-			SkillFolderHash: installedHash,
-		}
-	}
 
-	lockPath := filepath.Join(home, ".agents", ".skill-lock.json")
-	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeLock := func(value vercelLock) error {
-		content, err := json.Marshal(value)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(lockPath, content, 0o600)
-	}
-	if err := writeLock(lock); err != nil {
-		t.Fatal(err)
-	}
-
-	configPath := filepath.Join(home, "config.toml")
-	config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"test\"\nscope = \"user\"\n[[manifests]]\nkind = \"vercel-skills-lock-v3\"\npath = %q\ninstall_root = %q\n", filepath.ToSlash(root), filepath.ToSlash(lockPath), filepath.ToSlash(root))
-	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	originalSync := syncWorktreeSourceForSession
-	t.Cleanup(func() { syncWorktreeSourceForSession = originalSync })
-	syncWorktreeSourceForSession = func(context.Context, string, string) (string, error) {
-		return sourceRoot, nil
-	}
-	originalUpdater := runVercelUpdater
-	t.Cleanup(func() { runVercelUpdater = originalUpdater })
-	runVercelUpdater = func(ctx context.Context, request vercelUpdateRequest, _ io.Writer) (string, error) {
-		timer := time.NewTimer(350 * time.Millisecond)
-		defer timer.Stop()
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-timer.C:
-		}
-		writeTestSkill(t, installed[request.Name], request.Name, "new")
-		content, err := os.ReadFile(lockPath)
-		if err != nil {
-			return "", err
-		}
-		var current vercelLock
-		if err := json.Unmarshal(content, &current); err != nil {
-			return "", err
-		}
-		entry := current.Skills[request.Name]
-		entry.SkillFolderHash = remoteHashes[request.Name]
-		current.Skills[request.Name] = entry
-		if err := writeLock(current); err != nil {
-			return "", err
-		}
-		return "updated", nil
-	}
-
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"update", "--timeout", "500ms", "--config", configPath}, &stdout, &stderr); code != 0 {
-		t.Fatalf("update failed (%d):\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
-	}
-	for name, installedPath := range installed {
-		got, err := hashDirectory(installedPath)
-		if err != nil {
+		configPath := filepath.Join(home, "config.toml")
+		config := fmt.Sprintf("[[roots]]\npath = %q\nhost = \"test\"\nscope = \"user\"\n[[manifests]]\nkind = \"vercel-skills-lock-v3\"\npath = %q\ninstall_root = %q\n", filepath.ToSlash(root), filepath.ToSlash(lockPath), filepath.ToSlash(root))
+		if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if got != remoteHashes[name] {
-			t.Fatalf("%s was not updated", name)
+
+		originalSync := syncWorktreeSourceForSession
+		t.Cleanup(func() { syncWorktreeSourceForSession = originalSync })
+		syncWorktreeSourceForSession = func(context.Context, string, string) (string, error) {
+			return sourceRoot, nil
 		}
+		originalUpdater := runVercelUpdater
+		t.Cleanup(func() { runVercelUpdater = originalUpdater })
+		runVercelUpdater = func(ctx context.Context, request vercelUpdateRequest, _ io.Writer) (string, error) {
+			timer := time.NewTimer(350 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-timer.C:
+			}
+			writeTestSkill(t, installed[request.Name], request.Name, "new")
+			content, err := os.ReadFile(lockPath)
+			if err != nil {
+				return "", err
+			}
+			var current vercelLock
+			if err := json.Unmarshal(content, &current); err != nil {
+				return "", err
+			}
+			entry := current.Skills[request.Name]
+			entry.SkillFolderHash = remoteHashes[request.Name]
+			current.Skills[request.Name] = entry
+			if err := writeLock(current); err != nil {
+				return "", err
+			}
+			return "updated", nil
+		}
+
+		var stdout bytes.Buffer
+		var stderr delayedUpdateProgress
+		if code := run([]string{"update", "--timeout", "500ms", "--config", configPath}, &stdout, &stderr); code != 0 {
+			t.Fatalf("update failed (%d):\nstdout:\n%s\nstderr:\n%s", code, stdout.String(), stderr.String())
+		}
+		for name, installedPath := range installed {
+			got, err := hashDirectory(installedPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != remoteHashes[name] {
+				t.Fatalf("%s was not updated", name)
+			}
+		}
+	})
+}
+
+// Preparation and progress output must not consume the provider process budget.
+// Virtual time makes the timing boundary deterministic even on loaded CI hosts.
+type delayedUpdateProgress struct{ bytes.Buffer }
+
+func (w *delayedUpdateProgress) Write(data []byte) (int, error) {
+	if strings.HasPrefix(string(data), "Updating ") {
+		time.Sleep(time.Second)
 	}
+	return w.Buffer.Write(data)
 }
 
 func TestTrackedUpdateSafety(t *testing.T) {
@@ -547,6 +562,7 @@ func TestTrackedUpdateSafety(t *testing.T) {
 }
 
 func TestVercelUpdateRollsBackOnProviderFailure(t *testing.T) {
+	setTestHome(t)
 	dir := t.TempDir()
 	installed := filepath.Join(dir, "demo")
 	writeTestSkill(t, installed, "demo", "original")
@@ -583,6 +599,7 @@ func TestVercelUpdateRollsBackOnProviderFailure(t *testing.T) {
 }
 
 func TestGHSkillUpdateRollsBackOnProviderFailure(t *testing.T) {
+	setTestHome(t)
 	dir := t.TempDir()
 	installed := filepath.Join(dir, "demo")
 	writeTestSkill(t, installed, "demo", "original")
@@ -646,6 +663,7 @@ func BenchmarkScanUnmanagedSkills(b *testing.B) {
 }
 
 func newTrackedFixture(t *testing.T) (skill, *trackedState, *sourceSession, string) {
+	t.Setenv("SKILLCTL_HOME", t.TempDir())
 	t.Helper()
 	dir := t.TempDir()
 	installed := filepath.Join(dir, "installed", "demo")

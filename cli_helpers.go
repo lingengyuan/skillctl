@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-func printSkills(w io.Writer, skills []skill, message string) {
+func printSkills(w io.Writer, skills []skill, message, state, reason string, available bool) {
 	if sink, ok := w.(*reportSink); ok {
-		sink.set(skills, message)
+		sink.set(skills, message, state, reason, available)
 		return
 	}
 	for _, item := range skills {
@@ -42,13 +42,17 @@ func filterSkills(all []skill, hosts, scopes []string) []skill {
 	scopeSet := stringSet(scopes)
 	filtered := make([]skill, 0, len(all))
 	for _, item := range all {
-		if len(hostSet) > 0 && !hostSet[strings.ToLower(item.Host)] {
-			continue
+		bindings := item.Bindings
+		if len(bindings) == 0 {
+			bindings = []skillBinding{{Host: item.Host, Scope: item.Scope}}
 		}
-		if len(scopeSet) > 0 && !scopeSet[strings.ToLower(item.Scope)] {
-			continue
+		for _, binding := range bindings {
+			if (len(hostSet) == 0 || hostSet[strings.ToLower(binding.Host)]) && (len(scopeSet) == 0 || scopeSet[strings.ToLower(binding.Scope)]) {
+				item.Host, item.Scope = binding.Host, binding.Scope
+				filtered = append(filtered, item)
+				break
+			}
 		}
-		filtered = append(filtered, item)
 	}
 	return filtered
 }

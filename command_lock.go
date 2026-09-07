@@ -1,14 +1,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 )
-
-const commandLockStaleAfter = 24 * time.Hour
 
 type commandLock struct {
 	path string
@@ -16,33 +13,32 @@ type commandLock struct {
 }
 
 func acquireCommandLock() (*commandLock, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := skillctlDirectory()
 	if err != nil {
 		return nil, fmt.Errorf("find user config directory: %w", err)
 	}
-	dir = filepath.Join(dir, "skillctl")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create command lock directory: %w", err)
 	}
 	path := filepath.Join(dir, "operation.lock")
-	for attempt := 0; attempt < 2; attempt++ {
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err == nil {
-			_, _ = fmt.Fprintf(file, "pid=%d\nstarted=%s\n", os.Getpid(), time.Now().UTC().Format(time.RFC3339Nano))
-			return &commandLock{path: path, file: file}, nil
-		}
-		if !errors.Is(err, os.ErrExist) {
-			return nil, fmt.Errorf("acquire operation lock: %w", err)
-		}
-		info, statErr := os.Stat(path)
-		if statErr == nil && time.Since(info.ModTime()) > commandLockStaleAfter {
-			if removeErr := os.Remove(path); removeErr == nil || errors.Is(removeErr, os.ErrNotExist) {
-				continue
-			}
-		}
-		return nil, fmt.Errorf("another skillctl update or track operation is already running (%s)", path)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open operation lock: %w", err)
 	}
-	return nil, fmt.Errorf("could not acquire operation lock: %s", path)
+	if err := lockFile(file); err != nil {
+		file.Close()
+		return nil, fmt.Errorf("another skillctl operation is running (%s): %w", path, err)
+	}
+	lock := &commandLock{path: path, file: file}
+	if err := file.Truncate(0); err != nil {
+		lock.release()
+		return nil, err
+	}
+	if _, err := fmt.Fprintf(file, "pid=%d\nstarted=%s\n", os.Getpid(), time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		lock.release()
+		return nil, err
+	}
+	return lock, nil
 }
 
 func (l *commandLock) release() {
@@ -50,8 +46,24 @@ func (l *commandLock) release() {
 		return
 	}
 	if l.file != nil {
+		unlockFile(l.file)
 		_ = l.file.Close()
 		l.file = nil
 	}
-	_ = os.Remove(l.path)
+	// Never unlink: another process may already have opened this inode. Kernel
+	// locks release automatically on exit, so interrupted commands do not leave
+	// a stale lock requiring a time-based deletion.
+}
+
+func operationLockActive(path string) bool {
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	if err := lockFile(file); err != nil {
+		return true
+	}
+	unlockFile(file)
+	return false
 }

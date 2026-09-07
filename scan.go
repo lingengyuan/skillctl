@@ -23,6 +23,21 @@ type skill struct {
 	Scope      string
 	Broken     bool
 	LinkTarget string
+	Bindings   []skillBinding
+	Invalid    string
+	IssueCode  string
+}
+
+// A binding is a host-visible path, independent of the physical content it
+// exposes. Several hosts may use one directory, and one host may use several
+// versions in different projects.
+type skillBinding struct {
+	Path    string `json:"path"`
+	Host    string `json:"host"`
+	Scope   string `json:"scope"`
+	Project string `json:"project,omitempty"`
+	Enabled bool   `json:"enabled"`
+	Mode    string `json:"mode"`
 }
 
 func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
@@ -42,6 +57,7 @@ func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
 			}
 			fmt.Fprintf(stderr, "%s: %v\n", root, err)
 			failed = true
+			skills = append(skills, skill{Name: filepath.Base(root), Path: root, ScanRoot: root, Host: rootSpec.Host, Scope: rootSpec.Scope, Invalid: err.Error(), IssueCode: "root_unavailable"})
 			continue
 		}
 		realRoot, err := filepath.EvalSymlinks(root)
@@ -54,27 +70,46 @@ func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
 		err = walkFollowingLinks(root, visitedDirs, func(path, real string) (bool, error) {
 			dir := filepath.Dir(path)
 			name, err := readSkill(path)
+			invalid := ""
 			if err != nil {
-				fmt.Fprintf(stderr, "%s: skipped (%v)\n", path, err)
-				return false, nil
+				fmt.Fprintf(stderr, "%s: invalid (%v)\n", path, err)
+				name, invalid, failed = filepath.Base(dir), err.Error(), true
 			}
 			key := canonicalPathKey(real)
 			if index, ok := seen[key]; ok {
 				skills[index].Aliases = appendUnique(skills[index].Aliases, dir)
+				addSkillBinding(&skills[index], dir, rootSpec)
 				return true, nil
 			}
 			seen[key] = len(skills)
-			skills = append(skills, skill{Name: name, Path: real, Aliases: []string{dir}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope})
+			item := skill{Name: name, Path: real, Aliases: []string{dir}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope, Invalid: invalid}
+			if invalid != "" {
+				item.IssueCode = "invalid_skill"
+			}
+			addSkillBinding(&item, dir, rootSpec)
+			skills = append(skills, item)
 			return true, nil
 		}, func(path, target string) {
 			name := filepath.Base(path)
-			skills = append(skills, skill{Name: name, Path: path, Aliases: []string{path}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope, Broken: true, LinkTarget: target})
+			item := skill{Name: name, Path: path, Aliases: []string{path}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope, Broken: true, LinkTarget: target}
+			addSkillBinding(&item, path, rootSpec)
+			skills = append(skills, item)
 		}, func(alias, canonical string) {
-			addAliasesForVisitedDir(skills, alias, canonical)
+			for i := range skills {
+				if within(canonical, skills[i].Path) {
+					rel, relErr := filepath.Rel(canonical, skills[i].Path)
+					if relErr == nil {
+						path := filepath.Join(alias, rel)
+						skills[i].Aliases = appendUnique(skills[i].Aliases, path)
+						addSkillBinding(&skills[i], path, rootSpec)
+					}
+				}
+			}
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "%s: scan failed: %v\n", root, err)
 			failed = true
+			skills = append(skills, skill{Name: filepath.Base(root), Path: root, ScanRoot: root, Host: rootSpec.Host, Scope: rootSpec.Scope, Invalid: err.Error(), IssueCode: "root_unreadable"})
 		}
 	}
 	slices.SortFunc(skills, func(a, b skill) int {
@@ -83,24 +118,25 @@ func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
 	return skills, failed
 }
 
+func addSkillBinding(item *skill, path string, root scanRoot) {
+	for _, binding := range item.Bindings {
+		if samePath(binding.Path, path) && binding.Host == root.Host && binding.Scope == root.Scope && binding.Project == root.Project {
+			return
+		}
+	}
+	mode := "directory"
+	if !samePath(path, item.Path) {
+		mode = "link"
+	}
+	item.Bindings = append(item.Bindings, skillBinding{Path: path, Host: root.Host, Scope: root.Scope, Project: root.Project, Enabled: true, Mode: mode})
+}
+
 func uniqueSkillCount(skills []skill) int {
 	seen := make(map[string]struct{}, len(skills))
 	for _, item := range skills {
 		seen[item.Name] = struct{}{}
 	}
 	return len(seen)
-}
-
-func addAliasesForVisitedDir(skills []skill, alias, canonical string) {
-	for i := range skills {
-		if !within(canonical, skills[i].Path) {
-			continue
-		}
-		rel, err := filepath.Rel(canonical, skills[i].Path)
-		if err == nil {
-			skills[i].Aliases = appendUnique(skills[i].Aliases, filepath.Join(alias, rel))
-		}
-	}
 }
 
 func appendUnique(values []string, value string) []string {
@@ -236,4 +272,39 @@ func readSkill(path string) (string, error) {
 		return "", errors.New("missing description")
 	}
 	return name, nil
+}
+
+// Resolve aliases in existing parents while retaining the identity of the leaf.
+// Two Agent symlinks remain distinct bindings even when they share a target.
+func canonicalLocation(path string) string {
+	if path == "" {
+		return ""
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.Clean(path)
+	}
+	parent := filepath.Dir(absolute)
+	tail := []string{filepath.Base(absolute)}
+	for {
+		if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved
+		}
+		next := filepath.Dir(parent)
+		if next == parent {
+			return absolute
+		}
+		tail = append(tail, filepath.Base(parent))
+		parent = next
+	}
+}
+
+func physicalLocation(path string) string {
+	if real, err := filepath.EvalSymlinks(path); err == nil {
+		return real
+	}
+	return canonicalLocation(path)
 }

@@ -169,8 +169,8 @@ install_root = "~/.agents/skills"
 }
 
 func TestValidateDryRunAndTrackOptions(t *testing.T) {
-	if err := validateOptions("check", options{DryRun: true}); err == nil {
-		t.Fatal("--dry-run was accepted for check")
+	if err := validateOptions("list", options{DryRun: true}); err == nil {
+		t.Fatal("--dry-run was accepted for list")
 	}
 	if err := validateOptions("check", options{Source: "repo"}); err == nil {
 		t.Fatal("track-only source option was accepted for check")
@@ -181,7 +181,8 @@ func TestValidateDryRunAndTrackOptions(t *testing.T) {
 }
 
 func TestDoctorFixRemovesStaleTrackedEntry(t *testing.T) {
-	dir := t.TempDir()
+	dir := setTestHome(t)
+	t.Setenv("SKILLCTL_HOME", filepath.Join(dir, "state"))
 	state := &trackedState{
 		Version: 1,
 		path:    filepath.Join(dir, "sources.json"),

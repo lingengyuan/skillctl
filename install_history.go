@@ -52,6 +52,9 @@ func trackFromInstallHistory(ctx context.Context, timeout time.Duration, items [
 	rootCache := map[string]gitRootResult{}
 	var pending []skill
 	for _, item := range items {
+		if item.Invalid != "" || item.Broken {
+			continue
+		}
 		claims := provenance.claims(item)
 		if claims.hasTracked {
 			fmt.Fprintf(stdout, "%s: already tracked\n", item.Name)
@@ -130,7 +133,7 @@ func readInstallHistory() (map[string][]installCandidate, error) {
 		return nil, err
 	}
 	return readInstallHistoryRoots([]string{
-		filepath.Join(home, ".codex", "sessions"),
+		filepath.Join(codexHomePath(), "sessions"),
 		filepath.Join(home, ".claude", "projects"),
 	})
 }

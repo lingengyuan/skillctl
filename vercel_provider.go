@@ -64,7 +64,7 @@ type vercelUpdateRequest struct {
 
 var runVercelUpdater = executeVercelUpdater
 
-func updateVercelProvider(ctx context.Context, session *sourceSession, item skill, claim vercelClaim, progress io.Writer) (vercelLockEntry, error) {
+func updateVercelProviderNative(ctx context.Context, session *sourceSession, item skill, claim vercelClaim, progress io.Writer) (vercelLockEntry, error) {
 	snapshot, err := createVercelUpdateSnapshot(item.Path, claim.ManifestPath)
 	if err != nil {
 		return vercelLockEntry{}, fmt.Errorf("create update backup: %w", err)
@@ -73,7 +73,9 @@ func updateVercelProvider(ctx context.Context, session *sourceSession, item skil
 
 	started := time.Now()
 	fmt.Fprintf(progress, "Updating %s with Vercel Skills...\n", claim.Name)
-	_, err = runVercelUpdater(ctx, vercelUpdateRequest{Name: claim.Name, ManifestPath: claim.ManifestPath}, progress)
+	operationCtx, cancel := context.WithTimeout(ctx, session.networkTimeout)
+	_, err = runVercelUpdater(operationCtx, vercelUpdateRequest{Name: claim.Name, ManifestPath: claim.ManifestPath}, progress)
+	cancel()
 	if err != nil {
 		fmt.Fprintf(progress, "Vercel Skills update failed (%s).\n", time.Since(started).Round(time.Millisecond))
 		return vercelLockEntry{}, snapshot.fail(item.Path, claim.ManifestPath, err)
@@ -523,4 +525,16 @@ func (locks vercelLocks) claim(item skill) (vercelClaim, []string, bool) {
 		}
 	}
 	return vercelClaim{}, nil, false
+}
+
+func updateVercelProvider(ctx context.Context, session *sourceSession, item skill, claim vercelClaim, progress io.Writer) (vercelLockEntry, error) {
+	operation, err := beginExternalOperation("update Vercel Skills", []string{item.Path, claim.ManifestPath}, []string{item.Name + ": " + item.Path})
+	if err != nil {
+		return vercelLockEntry{}, err
+	}
+	result, err := updateVercelProviderNative(ctx, session, item, claim, progress)
+	if finishErr := operation.finishExternal(err); finishErr != nil {
+		return vercelLockEntry{}, finishErr
+	}
+	return result, nil
 }

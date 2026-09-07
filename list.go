@@ -7,13 +7,16 @@ import (
 )
 
 type skillListEntry struct {
-	Name       string   `json:"name"`
-	Path       string   `json:"path"`
-	Aliases    []string `json:"aliases,omitempty"`
-	Host       string   `json:"host"`
-	Scope      string   `json:"scope"`
-	Broken     bool     `json:"broken"`
-	LinkTarget string   `json:"linkTarget,omitempty"`
+	Name       string         `json:"name"`
+	Path       string         `json:"path"`
+	Aliases    []string       `json:"aliases,omitempty"`
+	Host       string         `json:"host"`
+	Scope      string         `json:"scope"`
+	Broken     bool           `json:"broken"`
+	LinkTarget string         `json:"linkTarget,omitempty"`
+	Bindings   []skillBinding `json:"bindings,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	ReasonCode string         `json:"reasonCode,omitempty"`
 }
 
 func writeSkillList(w io.Writer, skills []skill, asJSON bool) error {
@@ -27,6 +30,9 @@ func writeSkillList(w io.Writer, skills []skill, asJSON bool) error {
 			Scope:      item.Scope,
 			Broken:     item.Broken,
 			LinkTarget: item.LinkTarget,
+			Bindings:   item.Bindings,
+			Error:      item.Invalid,
+			ReasonCode: item.IssueCode,
 		})
 	}
 	if asJSON {
@@ -43,6 +49,9 @@ func writeSkillList(w io.Writer, skills []skill, asJSON bool) error {
 		status := ""
 		if item.Broken {
 			status = " broken -> " + item.LinkTarget
+		}
+		if item.Error != "" {
+			status = " invalid: " + item.Error
 		}
 		if _, err := fmt.Fprintf(w, "%s [%s, %s] %s%s\n", item.Name, item.Host, item.Scope, item.Path, status); err != nil {
 			return err
