@@ -399,8 +399,8 @@ func extractWellKnownTarGzip(data []byte, destination string) error {
 			return fmt.Errorf("well-known archive exceeds unpacked size limit")
 		}
 		unpacked += header.Size
-		clean := filepath.Clean(filepath.FromSlash(header.Name))
-		if clean == "." || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		clean, safe := artifactEntryPath(header.Name)
+		if !safe {
 			return fmt.Errorf("well-known archive contains unsafe path")
 		}
 		path := filepath.Join(destination, clean)

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -291,8 +292,8 @@ func unpackArtifact(body []byte, destination string) error {
 		}
 		var total uint64
 		for _, entry := range archive.File {
-			clean := filepath.Clean(filepath.FromSlash(entry.Name))
-			if clean == "." || filepath.IsAbs(clean) || !within(destination, filepath.Join(destination, clean)) || strings.Contains(entry.Name, "\\") {
+			clean, safe := artifactEntryPath(entry.Name)
+			if !safe || !within(destination, filepath.Join(destination, clean)) {
 				return fmt.Errorf("archive contains unsafe path")
 			}
 			if entry.Mode()&os.ModeSymlink != 0 {
@@ -345,4 +346,15 @@ func unpackArtifact(body []byte, destination string) error {
 func artifactRevision(body []byte) string {
 	hash := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(hash[:])
+}
+
+// Archive names use slash separators on every host. Validate them before OS
+// path conversion so a Unix absolute name, Windows drive, or alternate stream
+// cannot become an apparently relative name on another platform.
+func artifactEntryPath(name string) (string, bool) {
+	if strings.HasPrefix(name, "/") || strings.ContainsAny(name, `\:`) {
+		return "", false
+	}
+	clean := filepath.FromSlash(path.Clean(name))
+	return clean, clean != "." && filepath.IsLocal(clean)
 }
