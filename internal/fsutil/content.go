@@ -2,6 +2,7 @@ package fsutil
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -31,6 +32,15 @@ func IgnoreContent(rel string) bool {
 
 // HashDirectory hashes content with UTF-8 line endings normalized and version-control state excluded.
 func HashDirectory(root string) (string, error) {
+	return HashDirectoryContext(context.Background(), root)
+}
+
+// HashDirectoryContext is the cancellable form of HashDirectory, using the
+// same persisted digest format for compatibility with existing baselines.
+func HashDirectoryContext(ctx context.Context, root string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	var err error
 	root, err = filepath.EvalSymlinks(root)
 	if err != nil {
@@ -39,6 +49,9 @@ func HashDirectory(root string) (string, error) {
 	hash := sha256.New()
 	var paths []string
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if cancelErr := ctx.Err(); cancelErr != nil {
+			return cancelErr
+		}
 		if err != nil {
 			return err
 		}
@@ -63,6 +76,9 @@ func HashDirectory(root string) (string, error) {
 	}
 	slices.Sort(paths)
 	for _, rel := range paths {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		path := filepath.Join(root, rel)
 		info, err := os.Lstat(path)
 		if err != nil {

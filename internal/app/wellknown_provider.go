@@ -193,7 +193,24 @@ func setWellKnownReportError(r *report, prefix string, err error) {
 	r.Status = prefix + ": " + r.Error
 }
 
+type wellKnownIndexResult struct {
+	items map[string]wellKnownRemote
+	err   error
+}
+
 func fetchWellKnownIndex(ctx context.Context, baseURL string) (map[string]wellKnownRemote, error) {
+	if session, ok := ctx.Value(sourceSessionContextKey{}).(*sourceSession); ok {
+		if cached, found := session.wellKnown[baseURL]; found {
+			return cached.items, cached.err
+		}
+		items, err := fetchWellKnownIndexRemote(ctx, baseURL)
+		session.wellKnown[baseURL] = wellKnownIndexResult{items: items, err: err}
+		return items, err
+	}
+	return fetchWellKnownIndexRemote(ctx, baseURL)
+}
+
+func fetchWellKnownIndexRemote(ctx context.Context, baseURL string) (map[string]wellKnownRemote, error) {
 	base, err := url.Parse(baseURL)
 	if err != nil || base.Scheme == "" || base.Host == "" {
 		return nil, fmt.Errorf("invalid well-known source base URL")
@@ -518,5 +535,6 @@ func updateWellKnownBatch(ctx context.Context, networkTimeout time.Duration, ite
 	if err != nil {
 		return err
 	}
+	recordContextOperation(ctx, operation)
 	return operation.finishExternal(updateWellKnownBatchNative(ctx, networkTimeout, items, state, progress))
 }

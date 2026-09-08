@@ -4,6 +4,8 @@ package app
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -92,7 +94,9 @@ func TestIntegrationHistoryLifecycle(t *testing.T) {
 	if err := os.MkdirAll(sessions, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	record := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npx --yes skills add test/history -a codex -g -y"}}]}}` + "\n"
+	command := fmt.Sprintf("npx --yes skills add test/history --skill history-skill --dir %q -y", installedRoot)
+	recordData, _ := json.Marshal(map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "name": "Bash", "id": "install-claude", "input": map[string]string{"command": command}}}}})
+	record := string(recordData) + "\n" + `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"install-claude","content":"Process exited with code 0"}]}}` + "\n"
 	if err := os.WriteFile(filepath.Join(sessions, "session.jsonl"), []byte(record), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +104,9 @@ func TestIntegrationHistoryLifecycle(t *testing.T) {
 	if err := os.MkdirAll(codexSessions, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	codexRecord := `{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"const r = await tools.shell_command({command:\"npx --yes skills add test/history -a codex -g -y\"}); text(r)"}}` + "\n"
+	input := fmt.Sprintf("const r = await tools.shell_command({command:%q}); text(r)", command)
+	codexData, _ := json.Marshal(map[string]any{"type": "response_item", "payload": map[string]any{"type": "custom_tool_call", "name": "exec", "call_id": "install-codex", "input": input}})
+	codexRecord := string(codexData) + "\n" + `{"type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"install-codex","output":"{\"exit_code\":0}"}}` + "\n"
 	if err := os.WriteFile(filepath.Join(codexSessions, "session.jsonl"), []byte(codexRecord), 0o600); err != nil {
 		t.Fatal(err)
 	}

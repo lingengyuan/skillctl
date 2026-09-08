@@ -2,6 +2,7 @@ package app
 
 import (
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,17 +17,19 @@ import (
 // skill is one installed instance. Path is kept as the canonical path for
 // compatibility with the v0.1 explicit-track state.
 type skill struct {
-	Name       string
-	Path       string
-	Aliases    []string
-	ScanRoot   string
-	Host       string
-	Scope      string
-	Broken     bool
-	LinkTarget string
-	Bindings   []skillBinding
-	Invalid    string
-	IssueCode  string
+	Name        string
+	Path        string
+	Aliases     []string
+	ScanRoot    string
+	Host        string
+	Scope       string
+	Broken      bool
+	LinkTarget  string
+	Bindings    []skillBinding
+	Invalid     string
+	IssueCode   string
+	Document    *skilldoc.Document
+	Portability string
 }
 
 // A binding is a host-visible path, independent of the physical content it
@@ -42,6 +45,10 @@ type skillBinding struct {
 }
 
 func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
+	return scanContext(context.Background(), roots, stderr)
+}
+
+func scanContext(ctx context.Context, roots []scanRoot, stderr io.Writer) ([]skill, bool) {
 	seen := map[string]int{}
 	visitedDirs := map[string]string{}
 	var skills []skill
@@ -68,13 +75,21 @@ func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
 		if absolute, absErr := filepath.Abs(realRoot); absErr == nil {
 			realRoot = absolute
 		}
-		err = walkFollowingLinks(root, visitedDirs, func(path, real string) (bool, error) {
+		err = walkFollowingLinksContext(ctx, root, visitedDirs, func(path, real string) (bool, error) {
 			dir := filepath.Dir(path)
-			name, err := skilldoc.ReadName(path)
+			document, err := skilldoc.Read(path)
+			if err == nil {
+				err = skilldoc.Validate(document)
+			}
+			name := document.Name
 			invalid := ""
+			portability := ""
 			if err != nil {
 				fmt.Fprintf(stderr, "%s: invalid (%v)\n", path, err)
 				name, invalid, failed = filepath.Base(dir), err.Error(), true
+				if _, ok := errors.AsType[*skilldoc.NameError](err); ok {
+					portability = err.Error()
+				}
 			}
 			key := fsutil.PathKey(real)
 			if index, ok := seen[key]; ok {
@@ -83,7 +98,7 @@ func scan(roots []scanRoot, stderr io.Writer) ([]skill, bool) {
 				return true, nil
 			}
 			seen[key] = len(skills)
-			item := skill{Name: name, Path: real, Aliases: []string{dir}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope, Invalid: invalid}
+			item := skill{Name: name, Path: real, Aliases: []string{dir}, ScanRoot: realRoot, Host: rootSpec.Host, Scope: rootSpec.Scope, Invalid: invalid, Document: new(document), Portability: portability}
 			if invalid != "" {
 				item.IssueCode = "invalid_skill"
 			}
@@ -132,14 +147,6 @@ func addSkillBinding(item *skill, path string, root scanRoot) {
 	item.Bindings = append(item.Bindings, skillBinding{Path: path, Host: root.Host, Scope: root.Scope, Project: root.Project, Enabled: true, Mode: mode})
 }
 
-func uniqueSkillCount(skills []skill) int {
-	seen := make(map[string]struct{}, len(skills))
-	for _, item := range skills {
-		seen[item.Name] = struct{}{}
-	}
-	return len(seen)
-}
-
 func appendUnique(values []string, value string) []string {
 	for _, existing := range values {
 		if fsutil.SamePath(existing, value) {
@@ -153,11 +160,14 @@ func shouldIgnoreScanEntry(name string) bool {
 	return fsutil.IgnoreContent(name)
 }
 
-// walkFollowingLinks finds the nearest skill roots while following directory
+// walkFollowingLinksContext finds the nearest skill roots while following directory
 // links safely. Once a valid SKILL.md is found, its content directory is not
 // traversed again: references, assets, node_modules, and other skill payloads
 // cannot contain separate installations from the scanner's point of view.
-func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(string, string) (bool, error), visitBroken func(string, string), visitAlias func(string, string)) error {
+func walkFollowingLinksContext(ctx context.Context, dir string, visited map[string]string, visitSkill func(string, string) (bool, error), visitBroken func(string, string), visitAlias func(string, string)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	key, canonical, err := fsutil.IdentifyDirectory(dir)
 	if err != nil {
 		return err
@@ -233,7 +243,7 @@ func walkFollowingLinks(dir string, visited map[string]string, visitSkill func(s
 		if !isDir {
 			continue
 		}
-		if err := walkFollowingLinks(path, visited, visitSkill, visitBroken, visitAlias); err != nil {
+		if err := walkFollowingLinksContext(ctx, path, visited, visitSkill, visitBroken, visitAlias); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				visitBroken(path, "")
 				continue

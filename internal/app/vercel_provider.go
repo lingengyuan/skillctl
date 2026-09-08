@@ -302,27 +302,17 @@ func checkVercelEntry(session *sourceSession, entry vercelLockEntry, installed s
 	if filepath.IsAbs(entry.SkillPath) || filepath.Base(entry.SkillPath) != "SKILL.md" || strings.HasPrefix(filepath.Clean(entry.SkillPath), "..") {
 		return false, "unknown", fmt.Errorf("invalid skillPath")
 	}
-	var cache string
-	var err error
-	if entry.SourceType == "git" {
-		cache, err = session.worktreeSource(entry.SourceURL, entry.Ref)
-	} else {
-		cache, err = session.source(entry.SourceURL, entry.Ref)
-	}
+	cache, err := session.source(entry.SourceURL, entry.Ref)
 	if err != nil {
 		return false, "unknown", err
 	}
 	folder := filepath.ToSlash(filepath.Dir(entry.SkillPath))
 	if entry.SourceType == "git" {
-		remote, err := sourceSkillPath(cache, folder)
+		current, err := hashGitTree(session, cache, "HEAD:"+folder)
 		if err != nil {
 			return false, "unknown", err
 		}
-		current, err := fsutil.HashDirectory(remote)
-		if err != nil {
-			return false, "unknown", err
-		}
-		local, err := fsutil.HashDirectory(installed)
+		local, err := fsutil.HashDirectoryContext(session.ctx, installed)
 		if err != nil {
 			return false, "unknown", err
 		}
@@ -351,7 +341,7 @@ func vercelLocalDrift(session *sourceSession, cache, expectedTree, installed str
 	if err != nil {
 		return "unknown", err
 	}
-	actual, err := fsutil.HashDirectory(installed)
+	actual, err := fsutil.HashDirectoryContext(session.ctx, installed)
 	if err != nil {
 		return "unknown", err
 	}
@@ -365,7 +355,12 @@ func hashGitTree(session *sourceSession, cache, tree string) (string, error) {
 	if session.treeHashes == nil {
 		session.treeHashes = map[string]string{}
 	}
-	key := cache + "\x00" + tree
+	object, err := session.gitObject(cache, tree)
+	if err != nil {
+		return "", err
+	}
+	key := cache + "\x00" + object.Hash
+	tree = object.Hash
 	if value, ok := session.treeHashes[key]; ok {
 		return value, nil
 	}
@@ -419,9 +414,18 @@ func collectGitTreeFiles(session *sourceSession, cache, tree, prefix string) ([]
 	}
 	var files []gitTreeFile
 	for _, entry := range entries {
+		if err := session.ctx.Err(); err != nil {
+			return nil, err
+		}
 		path := entry.Path
 		if prefix != "" {
 			path = prefix + "/" + path
+		}
+		if fsutil.IgnoreContent(path) {
+			continue
+		}
+		if entry.Mode == "160000" {
+			return nil, fmt.Errorf("source contains unsupported submodule: %s", path)
 		}
 		if entry.Mode == "40000" || entry.Mode == "040000" {
 			children, err := collectGitTreeFiles(session, cache, entry.Object, path)
@@ -537,6 +541,7 @@ func updateVercelProvider(ctx context.Context, session *sourceSession, item skil
 	if err != nil {
 		return vercelLockEntry{}, err
 	}
+	recordContextOperation(ctx, operation)
 	result, err := updateVercelProviderNative(ctx, session, item, claim, progress)
 	if finishErr := operation.finishExternal(err); finishErr != nil {
 		return vercelLockEntry{}, finishErr

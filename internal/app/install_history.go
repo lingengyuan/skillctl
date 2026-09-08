@@ -42,7 +42,7 @@ func trackFromInstallHistory(ctx context.Context, timeout time.Duration, items [
 	if len(pending) == 0 {
 		return false
 	}
-	candidates, err := readInstallHistory()
+	candidates, err := readInstallHistoryContext(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "read install history: %s\n", oneLine(err.Error()))
 		return true
@@ -52,13 +52,13 @@ func trackFromInstallHistory(ctx context.Context, timeout time.Duration, items [
 
 func recoverInstallCandidates(ctx context.Context, timeout time.Duration, pending []skill, state *trackedState, candidates map[string][]installhistory.Candidate, namesExplicit bool, stdout, stderr io.Writer) bool {
 	failed := false
-	session := newSourceSession(ctx, timeout, stdout)
-	defer session.close()
+	session, cleanup := commandSourceSession(ctx, timeout, stdout)
+	defer cleanup()
 	var requests []sourceRequest
 	for _, item := range pending {
-		for _, candidate := range append(slices.Clone(candidates[item.Name]), candidates[""]...) {
+		for _, candidate := range eligibleHistoryCandidates(item, candidates) {
 			if validateSourceURL(candidate.Source) == nil {
-				requests = append(requests, sourceRequest{Source: gitstore.NormalizeSource(candidate.Source), Ref: candidate.Ref, Skills: []string{item.Name}, Worktree: true})
+				requests = append(requests, sourceRequest{Source: gitstore.NormalizeSource(candidate.Source), Ref: candidate.Ref, Skills: []string{item.Name}})
 			}
 		}
 	}
@@ -69,13 +69,12 @@ func recoverInstallCandidates(ctx context.Context, timeout time.Duration, pendin
 	}
 	var failures []recoveryFailure
 	failureIndex := map[string]int{}
-	sourceSkills := map[string]sourceSkillIndex{}
 	for _, item := range pending {
 		if err := ctx.Err(); err != nil {
 			fmt.Fprintf(stderr, "source recovery canceled: %v\n", err)
 			return true
 		}
-		matches := append(slices.Clone(candidates[item.Name]), candidates[""]...)
+		matches := eligibleHistoryCandidates(item, candidates)
 		if len(matches) == 0 {
 			fmt.Fprintf(stdout, "%s: no trusted install record\n", item.Name)
 			if namesExplicit {
@@ -91,29 +90,26 @@ func recoverInstallCandidates(ctx context.Context, timeout time.Duration, pendin
 				continue
 			}
 			source := gitstore.NormalizeSource(candidate.Source)
-			cache, err := session.worktreeSource(source, candidate.Ref)
+			cache, err := session.source(source, candidate.Ref)
 			if err != nil {
 				lastErr = err
 				continue
 			}
 			skillPath := candidate.SkillPath
 			if skillPath == "" {
-				index, cached := sourceSkills[cache]
-				if !cached {
-					index = scanSourceSkills(cache)
-					sourceSkills[cache] = index
-				}
+				index := session.sourceIndex(cache)
 				skillPath, err = index.find(item.Name)
 				if err != nil {
 					lastErr = err
 					continue
 				}
 			}
-			entry, err := verifyCopiedSkillInCache(item, source, candidate.Ref, skillPath, cache)
+			entry, err := verifyCopiedSkillInSession(ctx, session, item, source, candidate.Ref, skillPath, cache)
 			if err != nil {
 				lastErr = err
 				continue
 			}
+			entry.EvidenceID, entry.EvidenceWhen = candidate.EvidenceID, candidate.When
 			verified[historyEntryKey(entry)] = entry
 		}
 		switch len(verified) {
@@ -154,13 +150,59 @@ func historyEntryKey(entry trackedEntry) string {
 	return entry.Source + "\x00" + entry.Ref + "\x00" + entry.SkillPath
 }
 
-func readInstallHistory() (map[string][]installhistory.Candidate, error) {
+func readInstallHistoryContext(ctx context.Context) (map[string][]installhistory.Candidate, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	return installhistory.ReadRoots([]string{
-		filepath.Join(codexHomePath(), "sessions"),
-		filepath.Join(home, ".claude", "projects"),
-	})
+	roots := []string{filepath.Join(codexHomePath(), "sessions"), filepath.Join(home, ".claude", "projects")}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return installhistory.ReadRootsContext(ctx, roots)
+	}
+	candidates, _, err := installhistory.ReadRootsCached(ctx, roots, filepath.Join(cache, "skillctl", "history-index.json"))
+	return candidates, err
+}
+
+func eligibleHistoryCandidates(item skill, candidates map[string][]installhistory.Candidate) []installhistory.Candidate {
+	var eligible []installhistory.Candidate
+	for _, candidate := range append(slices.Clone(candidates[item.Name]), candidates[""]...) {
+		if candidate.Outcome != "succeeded" {
+			continue
+		}
+		bound := false
+		if candidate.Destination != "" {
+			destination := candidate.Destination
+			if !filepath.IsAbs(destination) {
+				if !filepath.IsAbs(candidate.Directory) {
+					continue
+				}
+				destination = filepath.Join(candidate.Directory, destination)
+			}
+			if !fsutil.Within(fsutil.PhysicalPath(destination), fsutil.PhysicalPath(item.Path)) {
+				continue
+			}
+			bound = true
+		}
+		if len(candidate.Hosts) > 0 {
+			if !slices.Contains(candidate.Hosts, item.Host) {
+				continue
+			}
+			if candidate.Global && item.Scope != "user" {
+				continue
+			}
+			if !candidate.Global && item.Scope != "project" {
+				continue
+			}
+			if !candidate.Global && (!filepath.IsAbs(candidate.Directory) || !fsutil.Within(fsutil.PhysicalPath(candidate.Directory), fsutil.PhysicalPath(item.Path))) {
+				continue
+			}
+			bound = true
+		}
+		if candidate.Name == "" && !bound {
+			continue
+		}
+		eligible = append(eligible, candidate)
+	}
+	return eligible
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -24,12 +25,12 @@ func BenchmarkAblationRecoveryFailed(b *testing.B) {
 	for i := range 32 {
 		name := fmt.Sprintf("sample-%02d", i)
 		items = append(items, skill{Name: name, Path: filepath.Join(root, name)})
-		candidates[name] = []installhistory.Candidate{{Source: fmt.Sprintf("https://example.invalid/repo-%d.git", i%8)}}
+		candidates[name] = []installhistory.Candidate{{Source: fmt.Sprintf("https://example.invalid/repo-%d.git", i%8), Name: name, Outcome: "succeeded"}}
 	}
-	previous := syncWorktreeSourceForSession
-	b.Cleanup(func() { syncWorktreeSourceForSession = previous })
+	previous := syncSourceForSession
+	b.Cleanup(func() { syncSourceForSession = previous })
 	var calls atomic.Int64
-	syncWorktreeSourceForSession = func(ctx context.Context, _, _ string) (string, error) {
+	syncSourceForSession = func(ctx context.Context, _, _ string) (string, error) {
 		calls.Add(1)
 		select {
 		case <-ctx.Done():
@@ -62,14 +63,21 @@ func BenchmarkAblationRecoveryVerified(b *testing.B) {
 			items = append(items, skill{Name: name, Path: installed})
 		}
 	}
-	previous := syncWorktreeSourceForSession
-	b.Cleanup(func() { syncWorktreeSourceForSession = previous })
+	previous := syncSourceForSession
+	b.Cleanup(func() { syncSourceForSession = previous })
 	var calls atomic.Int64
-	syncWorktreeSourceForSession = func(context.Context, string, string) (string, error) {
+	syncSourceForSession = func(context.Context, string, string) (string, error) {
 		calls.Add(1)
 		return source, nil
 	}
-	candidates := map[string][]installhistory.Candidate{"": {{Source: source}}}
+	for _, args := range [][]string{{"init", "-b", "main"}, {"add", "."}, {"-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "fixture"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = source
+		if output, err := cmd.CombinedOutput(); err != nil {
+			b.Fatalf("git: %s %v", output, err)
+		}
+	}
+	candidates := map[string][]installhistory.Candidate{"": {{Source: source, Outcome: "succeeded", Destination: filepath.Join(root, "installed")}}}
 	b.ReportAllocs()
 	for b.Loop() {
 		state := &trackedState{Version: 1, readOnly: true}

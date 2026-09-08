@@ -74,6 +74,9 @@ func checkGHLocalDrift(session *sourceSession, claim ghSkillClaim, installed str
 	installed = fsutil.PhysicalPath(installed)
 	modified := false
 	err = filepath.WalkDir(installed, func(path string, entry os.DirEntry, walkErr error) error {
+		if err := session.ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}

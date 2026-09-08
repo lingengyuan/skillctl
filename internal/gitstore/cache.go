@@ -57,7 +57,7 @@ func acquireSourceCacheLock(ctx context.Context, cache string) (*sourceCacheLock
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("wait for source cache lock: %w", err)
+			return nil, &OperationError{Stage: "cache-lock", Err: err}
 		}
 		file, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
 		if err != nil {
@@ -87,7 +87,7 @@ func acquireSourceCacheLock(ctx context.Context, cache string) (*sourceCacheLock
 		}
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("wait for source cache lock: %w", ctx.Err())
+			return nil, &OperationError{Stage: "cache-lock", Err: ctx.Err()}
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
@@ -179,7 +179,7 @@ func cloneSourceAtomically(ctx context.Context, source, cache string, bare bool)
 	}
 	args = append(args, "--recurse-submodules=no", source, tempPath)
 	if _, err := runGitNetworkCommand(ctx, parent, args...); err != nil {
-		return fmt.Errorf("git clone: %w", err)
+		return &OperationError{Stage: "clone", Err: err}
 	}
 	if err := os.Rename(tempPath, cache); err != nil {
 		return fmt.Errorf("publish source cache: %w", err)
@@ -228,34 +228,34 @@ func SyncObject(ctx context.Context, source, ref string) (string, error) {
 			args = append(args, "+HEAD:refs/skillctl/default")
 		}
 		if _, err := NetworkOutput(ctx, cache, args...); err != nil {
-			return "", fmt.Errorf("git fetch: %w", err)
+			return "", &OperationError{Stage: "fetch", Err: err}
 		}
 	} else if ref == "" {
-		defaultRevision, err := Output(cache, "rev-parse", "--verify", "HEAD^{commit}")
+		defaultRevision, err := OutputContext(ctx, cache, "rev-parse", "--verify", "HEAD^{commit}")
 		if err != nil {
 			return "", fmt.Errorf("resolve source default branch: %w", err)
 		}
-		if _, err := Output(cache, "update-ref", "refs/skillctl/default", defaultRevision); err != nil {
+		if _, err := OutputContext(ctx, cache, "update-ref", "refs/skillctl/default", defaultRevision); err != nil {
 			return "", fmt.Errorf("remember source default branch: %w", err)
 		}
 	}
-	revision, err := resolveObjectRevision(cache, ref)
+	revision, err := resolveObjectRevision(ctx, cache, ref)
 	if err != nil {
 		return "", err
 	}
-	if _, err := Output(cache, "update-ref", "refs/skillctl/selected", revision); err != nil {
+	if _, err := OutputContext(ctx, cache, "update-ref", "refs/skillctl/selected", revision); err != nil {
 		return "", fmt.Errorf("select source ref: %w", err)
 	}
-	if _, err := Output(cache, "symbolic-ref", "HEAD", "refs/skillctl/selected"); err != nil {
+	if _, err := OutputContext(ctx, cache, "symbolic-ref", "HEAD", "refs/skillctl/selected"); err != nil {
 		return "", fmt.Errorf("select source HEAD: %w", err)
 	}
 	return cache, nil
 }
 
-func resolveObjectRevision(cache, ref string) (string, error) {
+func resolveObjectRevision(ctx context.Context, cache, ref string) (string, error) {
 	if ref == "" {
 		for _, candidate := range []string{"refs/skillctl/default", "refs/heads/main", "refs/heads/master", "refs/skillctl/selected", "HEAD"} {
-			if revision, err := Output(cache, "rev-parse", "--verify", candidate+"^{commit}"); err == nil {
+			if revision, err := OutputContext(ctx, cache, "rev-parse", "--verify", candidate+"^{commit}"); err == nil {
 				return revision, nil
 			}
 		}
@@ -273,7 +273,7 @@ func resolveObjectRevision(cache, ref string) (string, error) {
 		candidates = append(candidates, ref)
 	}
 	for _, candidate := range candidates {
-		if revision, err := Output(cache, "rev-parse", "--verify", candidate+"^{commit}"); err == nil {
+		if revision, err := OutputContext(ctx, cache, "rev-parse", "--verify", candidate+"^{commit}"); err == nil {
 			return revision, nil
 		}
 	}
@@ -312,15 +312,15 @@ func SyncWorktree(ctx context.Context, source, ref string) (string, error) {
 	}
 	if !fresh {
 		if _, err := NetworkOutput(ctx, cache, "fetch", "--prune", "--recurse-submodules=no", "origin"); err != nil {
-			return "", fmt.Errorf("git fetch: %w", err)
+			return "", &OperationError{Stage: "fetch", Err: err}
 		}
 	}
-	revision, err := resolveSourceRevision(cache, ref)
+	revision, err := resolveSourceRevision(ctx, cache, ref)
 	if err != nil {
 		return "", err
 	}
-	if _, err := Output(cache, "checkout", "--force", "--detach", revision); err != nil {
-		return "", fmt.Errorf("checkout source ref: %w", err)
+	if _, err := OutputContext(ctx, cache, "checkout", "--force", "--detach", revision); err != nil {
+		return "", &OperationError{Stage: "checkout", Err: err}
 	}
 	return cache, nil
 }
@@ -335,7 +335,7 @@ func NormalizeSource(source string) string {
 	return source
 }
 
-func resolveSourceRevision(cache, ref string) (string, error) {
+func resolveSourceRevision(ctx context.Context, cache, ref string) (string, error) {
 	if ref == "" {
 		return "refs/remotes/origin/HEAD", nil
 	}
@@ -350,7 +350,7 @@ func resolveSourceRevision(cache, ref string) (string, error) {
 		candidates = append(candidates, ref)
 	}
 	for _, candidate := range candidates {
-		if _, err := Output(cache, "rev-parse", "--verify", candidate+"^{commit}"); err == nil {
+		if _, err := OutputContext(ctx, cache, "rev-parse", "--verify", candidate+"^{commit}"); err == nil {
 			return candidate, nil
 		}
 	}

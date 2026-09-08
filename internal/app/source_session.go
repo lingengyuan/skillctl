@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,12 +16,19 @@ import (
 )
 
 type sourceSession struct {
+	observation    *observation
 	ctx            context.Context
 	networkTimeout time.Duration
 	caches         map[string]string
 	sourceErrors   map[string]error
 	objects        map[string]*gitstore.Reader
 	treeHashes     map[string]string
+	revisions      map[string]string
+	indexes        map[string]sourceSkillIndex
+	stages         []string
+	operations     []*operationRecord
+	parent         *sourceSession
+	wellKnown      map[string]wellKnownIndexResult
 	progress       io.Writer
 	sourceCount    int
 }
@@ -33,25 +41,22 @@ func newSourceSession(ctx context.Context, networkTimeout time.Duration, progres
 		sourceErrors:   map[string]error{},
 		objects:        map[string]*gitstore.Reader{},
 		treeHashes:     map[string]string{},
+		revisions:      map[string]string{},
+		indexes:        map[string]sourceSkillIndex{},
+		wellKnown:      map[string]wellKnownIndexResult{},
 		progress:       progress,
 	}
 }
 
-// Provider checks use an object-only cache unless they need filesystem access.
-// These internal seams let tests replace both real Git adapters.
+// All source consumers use the same object-cache adapter.
 var syncSourceForSession = gitstore.SyncObject
-
-// Provider checks use an object-only cache unless they need filesystem access.
-// These internal seams let tests replace both real Git adapters.
-var syncWorktreeSourceForSession = gitstore.SyncWorktree
 
 const maxConcurrentSourceChecks = 4
 
 type sourceRequest struct {
-	Source   string
-	Ref      string
-	Skills   []string
-	Worktree bool
+	Source string
+	Ref    string
+	Skills []string
 }
 
 type pendingSource struct {
@@ -62,6 +67,7 @@ type pendingSource struct {
 }
 
 type sourceResult struct {
+	started bool
 	pendingSource
 	cache   string
 	err     error
@@ -100,7 +106,7 @@ func (s *sourceSession) prefetch(requests []sourceRequest) {
 	byKey := map[string]int{}
 	var pending []pendingSource
 	for _, request := range requests {
-		key := sourceModeKey(request.Source, request.Ref, request.Worktree)
+		key := sourceKey(request.Source, request.Ref)
 		if index, found := byKey[key]; found {
 			for _, name := range request.Skills {
 				pending[index].Skills = appendUniqueString(pending[index].Skills, name)
@@ -126,15 +132,14 @@ func (s *sourceSession) prefetch(requests []sourceRequest) {
 	if len(pending) == 0 {
 		return
 	}
-	for _, item := range pending {
-		s.progressf("Checking remote source %d/%d: %s%s...\n", item.number, s.sourceCount, item.label, affectedSkillLabel(item.Skills))
-	}
+	s.progressf("Queued %d remote sources (up to %d running).\n", len(pending), maxConcurrentSourceChecks)
 	workerCount := min(len(pending), maxConcurrentSourceChecks)
-	jobs := make(chan pendingSource)
-	results := make(chan sourceResult, len(pending))
+	jobs := make(chan pendingSource, len(pending))
+	results := make(chan sourceResult, 2*len(pending))
 	for range workerCount {
 		go func() {
 			for item := range jobs {
+				results <- sourceResult{pendingSource: item, started: true}
 				started := time.Now()
 				cache, err := s.syncRequest(item.sourceRequest)
 				results <- sourceResult{pendingSource: item, cache: cache, err: err, elapsed: time.Since(started)}
@@ -145,8 +150,12 @@ func (s *sourceSession) prefetch(requests []sourceRequest) {
 		jobs <- item
 	}
 	close(jobs)
-	for range pending {
+	for range 2 * len(pending) {
 		result := <-results
+		if result.started {
+			s.progressf("Checking remote source %d/%d: %s%s...\n", result.number, s.sourceCount, result.label, affectedSkillLabel(result.Skills))
+			continue
+		}
 		elapsed := result.elapsed.Round(time.Millisecond)
 		if result.err != nil {
 			s.sourceErrors[result.key] = result.err
@@ -202,6 +211,9 @@ func sourceDisplayLabel(source, ref string) string {
 }
 
 func sourceErrorStage(err error) string {
+	if staged, ok := errors.AsType[*gitstore.OperationError](err); ok {
+		return staged.Stage
+	}
 	message := strings.ToLower(oneLine(err.Error()))
 	switch {
 	case strings.Contains(message, "clone"):
@@ -224,64 +236,42 @@ func sourceErrorStage(err error) string {
 func (s *sourceSession) syncRequest(request sourceRequest) (string, error) {
 	operationCtx, cancel := context.WithTimeout(s.ctx, s.networkTimeout)
 	defer cancel()
-	var cache string
-	var err error
-	if request.Worktree {
-		cache, err = syncWorktreeSourceForSession(operationCtx, request.Source, request.Ref)
-	} else {
-		cache, err = syncSourceForSession(operationCtx, request.Source, request.Ref)
-	}
+	cache, err := syncSourceForSession(operationCtx, request.Source, request.Ref)
 	if err == nil {
 		return cache, nil
 	}
+	stage := sourceErrorStage(err)
 	if operationCtx.Err() != nil {
-		err = fmt.Errorf("network timeout: %w", operationCtx.Err())
+		if s.ctx.Err() != nil {
+			err = fmt.Errorf("source operation canceled: %w", s.ctx.Err())
+		} else {
+			err = fmt.Errorf("network timeout: %w", operationCtx.Err())
+		}
 	}
 	return "", &sourceSyncError{
-		Key:   sourceModeKey(request.Source, request.Ref, request.Worktree),
+		Key:   sourceKey(request.Source, request.Ref),
 		Label: sourceDisplayLabel(request.Source, request.Ref),
-		Stage: sourceErrorStage(err),
+		Stage: stage,
 		Err:   err,
 	}
 }
 
 func (s *sourceSession) source(source, ref string) (string, error) {
-	return s.sourceWithMode(source, ref, false)
-}
-
-func (s *sourceSession) worktreeSource(source, ref string) (string, error) {
-	return s.sourceWithMode(source, ref, true)
-}
-
-func (s *sourceSession) sourceWithMode(source, ref string, worktree bool) (string, error) {
 	s.ensureSourceMaps()
-	key := sourceModeKey(source, ref, worktree)
+	key := sourceKey(source, ref)
 	if cache, ok := s.caches[key]; ok {
 		return cache, nil
 	}
 	if err, ok := s.sourceErrors[key]; ok {
 		return "", err
 	}
-	if !worktree {
-		worktreeKey := sourceModeKey(source, ref, true)
-		if cache, ok := s.caches[worktreeKey]; ok {
-			return cache, nil
-		}
-		if err, ok := s.sourceErrors[worktreeKey]; ok {
-			return "", err
-		}
-		// Compatibility for command-scoped fixtures and callers created before
-		// object/worktree cache modes were split.
-		if cache, ok := s.caches[sourceKey(source, ref)]; ok {
-			return cache, nil
-		}
-	}
+
 	s.sourceCount++
 	number := s.sourceCount
 	label := sourceDisplayLabel(source, ref)
 	s.progressf("Checking remote source %d: %s...\n", number, label)
 	started := time.Now()
-	cache, err := s.syncRequest(sourceRequest{Source: source, Ref: ref, Worktree: worktree})
+	cache, err := s.syncRequest(sourceRequest{Source: source, Ref: ref})
 	elapsed := time.Since(started).Round(time.Millisecond)
 	if err != nil {
 		s.sourceErrors[key] = err
@@ -306,14 +296,6 @@ func sourceKey(source, ref string) string {
 	return gitstore.NormalizeSource(source) + "\x00" + ref
 }
 
-func sourceModeKey(source, ref string, worktree bool) string {
-	mode := "object"
-	if worktree {
-		mode = "worktree"
-	}
-	return mode + "\x00" + sourceKey(source, ref)
-}
-
 func (s *sourceSession) progressf(format string, args ...any) {
 	if s.progress != nil {
 		fmt.Fprintf(s.progress, format, args...)
@@ -321,13 +303,23 @@ func (s *sourceSession) progressf(format string, args ...any) {
 }
 
 func (s *sourceSession) gitObject(cache, spec string) (gitstore.Object, error) {
+	if err := s.ctx.Err(); err != nil {
+		return gitstore.Object{}, err
+	}
+	if spec == "HEAD" || strings.HasPrefix(spec, "HEAD:") || strings.HasPrefix(spec, "HEAD^") {
+		revision, err := s.revision(cache)
+		if err != nil {
+			return gitstore.Object{}, err
+		}
+		spec = revision + strings.TrimPrefix(spec, "HEAD")
+	}
 	if s.objects == nil {
 		s.objects = map[string]*gitstore.Reader{}
 	}
 	reader := s.objects[cache]
 	if reader == nil {
 		var err error
-		reader, err = gitstore.NewReader(cache)
+		reader, err = gitstore.NewReaderContext(s.ctx, cache)
 		if err != nil {
 			return gitstore.Object{}, err
 		}
@@ -337,6 +329,12 @@ func (s *sourceSession) gitObject(cache, spec string) (gitstore.Object, error) {
 }
 
 func (s *sourceSession) close() {
+	if s.parent != nil {
+		s.parent.sourceCount = max(s.parent.sourceCount, s.sourceCount)
+	}
+	for _, stage := range s.stages {
+		_ = os.RemoveAll(stage)
+	}
 	for _, reader := range s.objects {
 		_ = reader.Close()
 	}

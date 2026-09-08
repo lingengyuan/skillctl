@@ -26,8 +26,8 @@ func inspectDetailed(ctx context.Context, networkTimeout time.Duration, action s
 		}
 	}
 	wellKnownReports, wellKnownFailed := inspectWellKnown(ctx, networkTimeout, action, wellKnownTargets, state, progress)
-	session := newSourceSession(ctx, networkTimeout, progress)
-	defer session.close()
+	session, cleanup := commandSourceSession(ctx, networkTimeout, progress)
+	defer cleanup()
 	var sourceRequests []sourceRequest
 	for _, item := range skills {
 		if item.Broken || item.Invalid != "" {
@@ -38,10 +38,10 @@ func inspectDetailed(ctx context.Context, networkTimeout time.Duration, action s
 			continue
 		}
 		if claims.hasVercel && claims.vercel.Entry.SourceURL != "" && claims.vercel.Entry.SkillPath != "" && claims.vercel.Entry.SkillFolderHash != "" && (claims.vercel.Entry.SourceType == "github" || claims.vercel.Entry.SourceType == "git") {
-			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.vercel.Entry.SourceURL, Ref: claims.vercel.Entry.Ref, Skills: []string{item.Name}, Worktree: claims.vercel.Entry.SourceType == "git"})
+			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.vercel.Entry.SourceURL, Ref: claims.vercel.Entry.Ref, Skills: []string{item.Name}})
 		}
 		if claims.hasTracked {
-			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.tracked.Source, Ref: claims.tracked.Ref, Skills: []string{item.Name}, Worktree: true})
+			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.tracked.Source, Ref: claims.tracked.Ref, Skills: []string{item.Name}})
 		}
 		if claims.gh.Found && claims.gh.Err == nil && claims.gh.Claim.Repository != "" && !claims.gh.Claim.Pinned {
 			sourceRequests = append(sourceRequests, sourceRequest{Source: ghRepositoryURL(claims.gh.Claim.Repository), Ref: claims.gh.Claim.Ref, Skills: []string{item.Name}})
@@ -240,7 +240,7 @@ func printTrackRepairHint(w io.Writer, reports []report) {
 	count := 0
 	name := ""
 	for _, r := range reports {
-		if r.Provider == "local-authoring" && r.Status == "local/untracked (no update source)" {
+		if r.Provider == "local-authoring" && r.State == "untracked" {
 			count++
 			name = r.Identity
 		}

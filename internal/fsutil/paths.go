@@ -58,6 +58,21 @@ func PhysicalPath(path string) string {
 
 // SamePath compares binding paths with Windows case folding when applicable.
 func SamePath(left, right string) bool {
+	if left == "" || right == "" {
+		return left == right
+	}
+	// BindingPath retains the leaf name. Distinct leaves cannot identify the
+	// same binding, so avoid filesystem work for the common non-match case.
+	leftAbs, leftErr := filepath.Abs(left)
+	rightAbs, rightErr := filepath.Abs(right)
+	if leftErr == nil && rightErr == nil {
+		if PathKey(leftAbs) == PathKey(rightAbs) {
+			return true
+		}
+		if PathKey(filepath.Base(leftAbs)) != PathKey(filepath.Base(rightAbs)) {
+			return false
+		}
+	}
 	left, right = BindingPath(left), BindingPath(right)
 	if filepath.Separator == '\\' {
 		return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))

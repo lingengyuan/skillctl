@@ -40,20 +40,27 @@ type skillAsset struct {
 	Evidence     []string              `json:"evidence,omitempty"`
 	Plugin       *hostPlugin           `json:"plugin,omitempty"`
 	Error        string                `json:"error,omitempty"`
+	Local        localObservation      `json:"local"`
+	Upstream     upstreamObservation   `json:"upstream"`
+	Update       updateEligibility     `json:"update"`
+	Validation   documentValidation    `json:"validation"`
 }
 
 type inventoryView struct {
-	Items       []skillAsset
-	Diagnostics []diagnostic
-	roots       []scanRoot
-	manifests   []manifest
-	managed     []managedRoot
-	skills      []skill
-	state       *trackedState
-	stateErr    error
-	catalog     *packageCatalog
-	timeout     time.Duration
-	scanFailed  bool
+	Items            []skillAsset
+	Diagnostics      []diagnostic
+	roots            []scanRoot
+	manifests        []manifest
+	managed          []managedRoot
+	skills           []skill
+	state            *trackedState
+	stateErr         error
+	catalog          *packageCatalog
+	timeout          time.Duration
+	scanFailed       bool
+	observation      *observation
+	checkObservation *checkObservation
+	provenance       *provenanceIndex
 }
 
 func loadInventory(ctx context.Context, opt options, refreshHosts, persist bool) (*inventoryView, error) {
@@ -73,12 +80,26 @@ func loadInventory(ctx context.Context, opt options, refreshHosts, persist bool)
 		roots = append(roots, catalog.roots()...)
 	}
 	hostCtx, cancel := context.WithTimeout(ctx, timeout)
-	plugins, diagnostics := discoverPlugins(hostCtx, opt, refreshHosts, persist)
+	var plugins []hostPlugin
+	var diagnostics []diagnostic
+	if supplied, ok := ctx.Value(hostObservationContextKey{}).(*hostObservation); ok {
+		plugins, diagnostics = supplied.plugins, supplied.diagnostics
+	} else {
+		plugins, diagnostics = discoverPlugins(hostCtx, opt, refreshHosts, persist)
+	}
 	cancel()
 	pluginScanRoots, pluginManaged, issues := pluginRoots(plugins)
 	roots, managed, diagnostics = append(roots, pluginScanRoots...), append(managed, pluginManaged...), append(diagnostics, issues...)
 	var scanErrors bytes.Buffer
-	items, failed := scan(roots, &scanErrors)
+	items, _ := scanContext(ctx, roots, &scanErrors)
+	failed := false
+	for i := range items {
+		item := &items[i]
+		if item.Portability != "" && installedPlugin(item.Path, plugins) != nil {
+			item.Invalid, item.IssueCode = "", ""
+		}
+		failed = failed || item.Invalid != ""
+	}
 	state, stateErr := loadTrackedState()
 	if stateErr != nil {
 		if !opt.allowInvalidState {
@@ -93,7 +114,12 @@ func loadInventory(ctx context.Context, opt options, refreshHosts, persist bool)
 	}
 	state.readOnly = !persist || stateErr != nil
 	view := &inventoryView{roots: roots, manifests: manifests, managed: managed, skills: items, state: state, stateErr: stateErr, catalog: catalog, timeout: timeout, scanFailed: failed, Diagnostics: diagnostics, Items: []skillAsset{}}
+	view.observation = newObservation(ctx)
+	if supplied, ok := ctx.Value(hostObservationContextKey{}).(*hostObservation); ok {
+		view.observation = supplied.observation
+	}
 	provenance, manifestErrors := newProvenanceIndex(items, state, manifests, managed)
+	view.provenance = provenance
 	for path, message := range manifestErrors {
 		view.Diagnostics = append(view.Diagnostics, diagnostic{Code: "provider_manifest_invalid", Message: message, Path: path, Level: "error"})
 	}
@@ -101,9 +127,12 @@ func loadInventory(ctx context.Context, opt options, refreshHosts, persist bool)
 		if pkg := catalog.byPath(item.Path); pkg != nil {
 			continue
 		}
-		asset := describeSkill(item, provenance, plugins)
+		asset := describeSkillObserved(item, provenance, plugins, view.observation)
 		if item.Invalid != "" {
 			view.Diagnostics = append(view.Diagnostics, diagnostic{Code: item.IssueCode, Message: item.Invalid, Path: item.Path, Level: "error"})
+		}
+		if item.Portability != "" && item.Invalid == "" {
+			view.Diagnostics = append(view.Diagnostics, diagnostic{Code: "skill_portability", Message: item.Portability, Path: item.Path, Level: "warning"})
 		}
 		if assetMatches(asset, opt) {
 			view.Items = append(view.Items, asset)
@@ -113,7 +142,7 @@ func loadInventory(ctx context.Context, opt options, refreshHosts, persist bool)
 		if !packageWithinRoots(pkg, roots) {
 			continue
 		}
-		asset := describePackage(pkg)
+		asset := describePackageObserved(pkg, view.observation)
 		if assetMatches(asset, opt) {
 			view.Items = append(view.Items, asset)
 		}
@@ -158,23 +187,34 @@ func bindingMatches(binding skillBinding, opt options) bool {
 	return (len(opt.Hosts) == 0 || slices.Contains(opt.Hosts, binding.Host)) && (len(opt.Scopes) == 0 || slices.Contains(opt.Scopes, binding.Scope)) && (opt.Project == "" || binding.Scope != "project" || fsutil.SamePath(binding.Project, projectDirectory(opt.Project)))
 }
 
+func installedPlugin(path string, plugins []hostPlugin) *hostPlugin {
+	for _, plugin := range plugins {
+		if fsutil.Within(fsutil.PhysicalPath(plugin.Directory), path) {
+			return new(plugin)
+		}
+	}
+	return nil
+}
+
 func describeSkill(item skill, p *provenanceIndex, plugins []hostPlugin) skillAsset {
+	return describeSkillObserved(item, p, plugins, newObservation(context.Background()))
+}
+
+func describeSkillObserved(item skill, p *provenanceIndex, plugins []hostPlugin, observed *observation) skillAsset {
 	asset := skillAsset{ID: "local-" + stableID(fsutil.PathKey(item.Path)), ContentID: "content-" + stableID(fsutil.PathKey(item.Path)), Name: item.Name, Path: item.Path, Provider: "local-authoring", Owner: "user", State: "untracked", ReasonCode: "missing_update_source", Drift: "unknown", Bindings: slices.Clone(item.Bindings)}
 	if len(asset.Bindings) == 0 {
 		asset.Bindings = []skillBinding{{Path: item.Path, Host: item.Host, Scope: item.Scope, Enabled: true, Mode: "directory"}}
 	}
-	if document, err := skilldoc.Read(filepath.Join(item.Path, "SKILL.md")); err == nil {
+	if item.Document != nil {
+		asset.Description = item.Document.Description
+		asset.Validation.DeclaredName = item.Document.Name
+	} else if document, err := skilldoc.Read(filepath.Join(item.Path, "SKILL.md")); err == nil {
 		asset.Description = document.Description
+		asset.Validation.DeclaredName = document.Name
 	}
-	if item.Invalid != "" {
-		asset.State, asset.ReasonCode, asset.Error = "invalid", item.IssueCode, item.Invalid
-		asset.Capabilities = assetCapabilities(asset)
-		return asset
-	}
-	if item.Broken {
-		asset.State, asset.ReasonCode = "broken", "broken_link"
-		asset.Capabilities = assetCapabilities(asset)
-		return asset
+	asset.Validation.Parse, asset.Validation.Portability = "valid", "valid"
+	if item.Portability != "" {
+		asset.Validation.Portability, asset.Validation.Message = "warning", item.Portability
 	}
 	for _, plugin := range plugins {
 		if fsutil.Within(fsutil.PhysicalPath(plugin.Directory), item.Path) {
@@ -188,18 +228,40 @@ func describeSkill(item skill, p *provenanceIndex, plugins []hostPlugin) skillAs
 			if !plugin.Enabled {
 				asset.State, asset.ReasonCode = "disabled", "host_disabled"
 			}
+			if item.Invalid != "" && item.Portability == "" {
+				asset.State, asset.ReasonCode, asset.Error = "invalid", item.IssueCode, item.Invalid
+				asset.Validation.Parse = "invalid"
+				return completeAsset(asset)
+			}
+			if item.Broken {
+				asset.State, asset.ReasonCode = "broken", "broken_link"
+				return completeAsset(asset)
+			}
 			if plugin.BaselineDigest != "" {
 				asset.Digest = plugin.BaselineDigest
-				if hash, err := fsutil.HashDirectory(plugin.Directory); err == nil {
+				if hash, err := observed.hash(plugin.Directory); err == nil {
 					asset.Drift = "clean"
 					if hash != plugin.BaselineDigest {
 						asset.State, asset.ReasonCode, asset.Drift = "modified", "local_changes", "modified"
 					}
+				} else {
+					asset.State, asset.ReasonCode, asset.Error = "error", "content_hash_failed", err.Error()
 				}
 			}
 			asset.Capabilities = assetCapabilities(asset)
-			return asset
+			return completeAsset(asset)
 		}
+	}
+	if item.Invalid != "" {
+		asset.State, asset.ReasonCode, asset.Error = "invalid", item.IssueCode, item.Invalid
+		if item.Portability == "" {
+			asset.Validation.Parse = "invalid"
+		}
+		return completeAsset(asset)
+	}
+	if item.Broken {
+		asset.State, asset.ReasonCode = "broken", "broken_link"
+		return completeAsset(asset)
 	}
 	claims := p.claims(item)
 	switch {
@@ -259,7 +321,7 @@ func describeSkill(item skill, p *provenanceIndex, plugins []hostPlugin) skillAs
 		}
 	}
 	if asset.Digest != "" {
-		if hash, err := fsutil.HashDirectory(item.Path); err == nil {
+		if hash, err := observed.hash(item.Path); err == nil {
 			asset.Drift = "clean"
 			if hash != asset.Digest {
 				asset.Drift, asset.State, asset.ReasonCode = "modified", "modified", "local_changes"
@@ -274,10 +336,14 @@ func describeSkill(item skill, p *provenanceIndex, plugins []hostPlugin) skillAs
 		}
 	}
 	asset.Capabilities = assetCapabilities(asset)
-	return asset
+	return completeAsset(asset)
 }
 
 func describePackage(pkg managedPackage) skillAsset {
+	return describePackageObserved(pkg, newObservation(context.Background()))
+}
+
+func describePackageObserved(pkg managedPackage, observed *observation) skillAsset {
 	asset := skillAsset{ID: pkg.ID, ContentID: "content-" + stableID(fsutil.PathKey(pkg.Directory)), Name: pkg.Name, Path: currentPackageDirectory(pkg), Source: new(pkg.Source), Provider: "skillctl-store", Owner: "skillctl", Revision: pkg.Revision, Digest: pkg.Digest, State: "unknown", ReasonCode: "not_checked", Drift: "clean", Bindings: []skillBinding{}}
 	if pkg.External {
 		asset.Provider = cmp.Or(pkg.Provider, "external-local")
@@ -288,6 +354,12 @@ func describePackage(pkg managedPackage) skillAsset {
 	}
 	if doc, err := skilldoc.Read(filepath.Join(asset.Path, "SKILL.md")); err == nil {
 		asset.Description = doc.Description
+		asset.Validation = documentValidation{Parse: "valid", Portability: "valid", DeclaredName: doc.Name}
+		if err := skilldoc.Validate(doc); err != nil {
+			asset.Validation.Portability, asset.Validation.Message = "invalid", err.Error()
+		}
+	} else {
+		asset.Validation = documentValidation{Parse: "invalid", Portability: "unknown", Message: err.Error()}
 	}
 	active := false
 	for _, binding := range pkg.Bindings {
@@ -300,7 +372,7 @@ func describePackage(pkg managedPackage) skillAsset {
 	if pkg.Pin != "" {
 		asset.State, asset.ReasonCode = "pinned", "pinned_revision"
 	}
-	if hash, err := fsutil.HashDirectory(asset.Path); err != nil {
+	if hash, err := observed.hash(asset.Path); err != nil {
 		asset.State, asset.ReasonCode, asset.Error = "broken", "content_unavailable", err.Error()
 	} else if hash != pkg.Digest {
 		asset.State, asset.ReasonCode, asset.Drift = "modified", "local_changes", "modified"
@@ -315,7 +387,7 @@ func describePackage(pkg managedPackage) skillAsset {
 				asset.State, asset.ReasonCode = "broken", "binding_changed"
 			}
 		} else {
-			hash, err := fsutil.HashDirectory(binding.Path)
+			hash, err := observed.hash(binding.Path)
 			if err != nil {
 				asset.State, asset.ReasonCode = "broken", "binding_missing"
 			} else if hash != binding.Digest {
@@ -324,7 +396,7 @@ func describePackage(pkg managedPackage) skillAsset {
 		}
 	}
 	asset.Capabilities = assetCapabilities(asset)
-	return asset
+	return completeAsset(asset)
 }
 
 func assetCapabilities(asset skillAsset) map[string]capability {
@@ -332,7 +404,7 @@ func assetCapabilities(asset skillAsset) map[string]capability {
 	for _, command := range []string{"check", "diff", "update", "enable", "disable", "remove", "pin", "rollback"} {
 		result[command] = capability{Supported: false, Reason: "operation is unavailable for this owner", Unit: "content"}
 	}
-	if asset.State == "invalid" || asset.State == "ambiguous" || asset.State == "broken" {
+	if asset.State == "invalid" || asset.State == "ambiguous" || asset.State == "broken" || asset.State == "error" || asset.State == "blocked" {
 		return result
 	}
 	result["check"] = capability{Supported: true, Unit: "content"}

@@ -50,6 +50,9 @@ Common options (may appear before or after positional arguments):
   --project PATH     discover/use a particular project
   --global, -g        select user scope
   --timeout DURATION  timeout for each network operation (default 10s)
+  --command-timeout DURATION  optional total command budget
+  --recovery-timeout DURATION  optional recovery budget (defaults to --timeout)
+  --verbose, -v       show all installation details
   --json              preserve v1 output for list/check/update/doctor
   --json-version 2    unified inventory, diagnostics, plan, and operation envelope
   --all-matches       select every content copy with a requested ambiguous name

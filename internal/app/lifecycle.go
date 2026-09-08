@@ -565,8 +565,9 @@ func planPackageUpdate(plan *lifecyclePlan, pkg *managedPackage, prepared prepar
 	return nil
 }
 
-func prepareCatalogUpdates(ctx context.Context, view *inventoryView, selected []skillAsset, opt options) (map[string]preparedPackage, func(), error) {
+func prepareCatalogUpdates(ctx context.Context, view *inventoryView, selected []skillAsset, opt options) (map[string]preparedPackage, func(), map[string]error) {
 	result := map[string]preparedPackage{}
+	failures := map[string]error{}
 	var cleanupFunctions []func()
 	cleanup := func() {
 		for _, fn := range cleanupFunctions {
@@ -593,8 +594,10 @@ func prepareCatalogUpdates(ctx context.Context, view *inventoryView, selected []
 		packages, clean, err := preparePackages(operationCtx, source, names, opt.Offline)
 		cancel()
 		if err != nil {
-			cleanup()
-			return nil, func() {}, err
+			for _, pkg := range group {
+				failures[pkg.ID] = err
+			}
+			continue
 		}
 		cleanupFunctions = append(cleanupFunctions, clean)
 		for _, pkg := range group {
@@ -608,12 +611,11 @@ func prepareCatalogUpdates(ctx context.Context, view *inventoryView, selected []
 				}
 			}
 			if !found {
-				cleanup()
-				return nil, func() {}, fmt.Errorf("upstream removed skill %s at %s", pkg.Name, pkg.Source.SkillPath)
+				failures[pkg.ID] = fmt.Errorf("upstream removed skill %s at %s", pkg.Name, pkg.Source.SkillPath)
 			}
 		}
 	}
-	return result, cleanup, nil
+	return result, cleanup, failures
 }
 
 func catalogBytes(catalog *packageCatalog) []byte { data, _ := json.Marshal(catalog); return data }

@@ -38,6 +38,8 @@ func Parse(args []string, stderr io.Writer) (Options, int) {
 			opt.Fix = true
 		case "--from-history":
 			opt.FromHistory = true
+		case "--verbose", "-v":
+			opt.Verbose = true
 		case "--no-history":
 			opt.NoHistory = true
 		case "--copy":
@@ -60,7 +62,7 @@ func Parse(args []string, stderr io.Writer) (Options, int) {
 			continue
 		}
 		switch key {
-		case "--path", "--config", "--host", "--agent", "-a", "--scope", "--timeout", "--source", "--ref", "--skill-path", "--skill", "-s", "--project", "--file", "--profile", "--output", "-o", "--json-version":
+		case "--path", "--config", "--host", "--agent", "-a", "--scope", "--timeout", "--command-timeout", "--recovery-timeout", "--source", "--ref", "--skill-path", "--skill", "-s", "--project", "--file", "--profile", "--output", "-o", "--json-version":
 		default:
 			return fail(fmt.Errorf("unknown option: %s", key))
 		}
@@ -104,12 +106,19 @@ func Parse(args []string, stderr io.Writer) (Options, int) {
 				return fail(fmt.Errorf("--json-version must be 1 or 2"))
 			}
 			opt.JSON, opt.JSONVersion = true, n
-		case "--timeout":
+		case "--timeout", "--command-timeout", "--recovery-timeout":
 			duration, err := time.ParseDuration(value)
 			if err != nil || duration <= 0 {
-				return fail(fmt.Errorf("--timeout requires a positive duration, for example 10s"))
+				return fail(fmt.Errorf("%s requires a positive duration, for example 10s", key))
 			}
-			opt.Timeout = duration
+			switch key {
+			case "--command-timeout":
+				opt.CommandTimeout = duration
+			case "--recovery-timeout":
+				opt.RecoveryTimeout = duration
+			default:
+				opt.Timeout = duration
+			}
 		}
 	}
 	return opt, 0
@@ -117,6 +126,9 @@ func Parse(args []string, stderr io.Writer) (Options, int) {
 
 // Validate checks whether the selected flags apply to a command.
 func Validate(command string, opt Options) error {
+	if opt.RecoveryTimeout > 0 && command != "check" && command != "update" && command != "track" {
+		return fmt.Errorf("--recovery-timeout is only valid with check, update or track")
+	}
 	if opt.Offline && command == "track" {
 		return fmt.Errorf("track requires source verification; use check --offline for local inventory")
 	}

@@ -2,7 +2,7 @@
 
 面向个人和小团队的 Skill 生命周期管理 CLI。统一发现多个 Agent 的安装、解释来源和本地修改，完成安装、分发、更新、停用、移除、固定版本和恢复。现有安装保留位置与管理者；新安装进入共享存储，再以链接或副本提供给 Agent。
 
-本文档对应 `v0.0.4`。安装脚本获取 GitHub 最新正式发布版，也可从源码构建；版本变化见 [CHANGELOG](CHANGELOG.md)。
+本文档对应 `v0.0.5`。安装脚本获取 GitHub 最新正式发布版，也可从源码构建；版本变化见 [GitHub Releases](https://github.com/lingengyuan/skillctl/releases)。
 
 ## 从源码运行
 
@@ -29,7 +29,7 @@ Invoke-WebRequest https://raw.githubusercontent.com/lingengyuan/skillctl/main/sc
 .\install.ps1
 ```
 
-也可以运行 `go install github.com/lingengyuan/skillctl@latest`。重新执行对应安装命令可更新程序；脚本支持 `./install.sh --version v0.0.4` 或 `.\install.ps1 -Version v0.0.4` 安装指定发布版本。
+也可以运行 `go install github.com/lingengyuan/skillctl@latest`。重新执行对应安装命令可更新程序；脚本支持 `./install.sh --version v0.0.5` 或 `.\install.ps1 -Version v0.0.5` 安装指定发布版本。
 
 ## 日常使用
 
@@ -117,7 +117,7 @@ skillctl import ./shared/skillctl.toml --frozen
 
 清单保留物理内容、内容身份和每个 Agent 的使用关系。无效文档、不可读目录、断链和损坏的绑定会进入结构化诊断。列表展示安装事实；`current` 表示经过来源检查，宿主管理项使用 `managed`，不会因“由宿主管理”而被标记为最新。
 
-`check` 和 `update` 会尝试从 Codex/Claude 的结构化工具调用记录恢复未知来源。记录只提供候选：当前内容必须匹配来源或其 Git 历史，且证据不能冲突。普通对话文本和名称猜测不能成为来源证据。`--no-history` 关闭自动恢复；原有显式入口继续可用：
+`check` 和 `update` 先检查已知来源，再从 Codex/Claude 的安装记录恢复未知来源。自动恢复要求可识别的实际工具调用、成功完成的结果，以及匹配的 Skill 名称、宿主或目标目录；未完成、失败和无法关联目标的记录不会触发来源请求。候选还必须通过当前内容或 Git 历史比对，且证据不能冲突。`--no-history` 关闭自动恢复；显式入口继续可用：
 
 ```sh
 skillctl track --from-history
@@ -134,6 +134,8 @@ skillctl track --source https://github.com/example/skills.git --skill-path skill
 | Codex / Claude 插件 | 从有效安装记录读取具体版本和启用状态，使用宿主 CLI 操作整个包 |
 | Codex system / 其他宿主管理项 | 展示归属与限制，不用目录覆盖替代宿主操作 |
 | 无来源的本地目录 | 可保存、分发、启停和恢复；没有可证明的远端更新来源 |
+
+宿主有效安装记录优先确定插件归属和版本。名称大小写等可移植性问题单独告警；缺失必填字段、损坏的 YAML 和不可读内容仍报告错误，新安装仍执行严格校验。指定单项检查时，无关目录的诊断保持可见，但不会让所选项目失败。
 
 Codex 插件列表使用最近一次 `check` 验证的原生清单；没有缓存时给出诊断，不把插件 cache 中的所有旧目录当作已安装。Claude 读取 `installed_plugins.json` v2 和作用域内的启用配置。插件内容基线用于发现记录之后的本地修改，并不等同于发行方签名。
 
@@ -171,6 +173,12 @@ project = "/work/project"
 
 `check` 可保存验证过的来源、基线和宿主清单。`--dry-run` 不保存这些状态，也不修改安装或 Git 工作仓库；远端读取可以使用下载缓存，Git 仓库预览使用临时 bare clone。`list` 和普通 `doctor` 不进行网络检查。
 
+`check` 不恢复安装事务，也不修改已安装内容或 Git 工作区。它在短锁内读取本机状态，在锁外获取来源；需要保存已验证来源或宿主观察时，再取得短锁，核对最新状态和内容后合并。未完成事务影响的项目标记为待恢复，不用部分写入的内容建立新基线。
+
+`--timeout` 限制单次来源操作，自动历史恢复的总预算默认使用同一时长，可用 `--recovery-timeout` 单独设置；`--command-timeout` 可限制整条命令。相同来源和 ref 在命令内共享获取结果，Git 内容读取固定到提交，不切换共享缓存工作区。
+
+安装历史索引仅保存解析出的候选元数据；文件身份、长度或修改时间/变更时间变化会触发重读。无法可靠识别文件变更的平台回退到完整解析。索引命中仍需验证来源内容。
+
 写操作先取得内核文件锁，再读取状态；另一写进程会收到 busy 错误。文件事务执行前校验原状态，保存 before/after 镜像，逐步执行并验证。进程退出会释放锁；下次写操作恢复可证明安全的中断事务。外部 CLI 中断后如果不能证明最终状态，会保留恢复证据并阻止后续写入。
 
 ```sh
@@ -186,6 +194,10 @@ skillctl rollback OPERATION_ID
 ## 机器接口与命令参考
 
 旧 `--json` 保留 `check/update` 数组和 `list/doctor` envelope。新增 `--json-version 2` 统一输出 `schemaVersion`、`command`、`items`、`diagnostics`，以及适用的 `plan`、`operation`、`operations`、`result`。v2 按内容副本输出，不合并同名不同来源；每项包含身份、来源、管理者、使用关系和操作能力。
+
+检查结果保留独立事实：`local.status` 描述本地内容，`upstream.status` 描述远端检查结果，`update.supported/eligible` 描述支持能力和当前执行资格，`validation` 描述文档校验。旧 `state`、JSON 外层结构和身份算法保留；`contentId` 标识物理安装位置，内容摘要仍使用 `digest`。
+
+摘要分别统计名称和物理安装数量，本地修改与远端更新可同时计数；`--verbose` 展开安装明细。更新前先完成来源检查和计划；各 Provider 复用原有事务与写前校验。独立来源可部分成功，`operations` 返回实际事务，失败保留在项目与诊断中，不宣称跨 Provider 全局原子性。
 
 退出码：`0` 表示查询或执行成功（可包含待更新、固定或明确跳过的项目），`1` 表示诊断/来源/执行失败，`2` 表示参数或配置错误。应结合 `state`、`reasonCode` 与 `diagnostics` 判断业务状态。
 
@@ -207,7 +219,7 @@ go vet ./...
 
 测试还覆盖来源缓存锁的进程退出释放、旧锁迁移、活动锁保护和共享来源只同步一次。既有测试覆盖多 Agent 生命周期、复制保护、同名不同源、共享路径限制、profile 切换、两环境冻结复现、制品篡改、原生插件记录与整包范围、进程中断和恢复失败。Git 集成测试使用本地临时仓库；宿主插件与外部 Provider 更新采用可控 fixture，不会更新开发者的真实插件。
 
-性能消融可运行 `python3 scripts/ablation.py`，只修改临时源码副本。固定场景、真实历史数据、保留与放弃的优化及复现方法见 [性能实验](docs/performance.md)。
+历史性能实验及 `scripts/ablation.py` 对应 `v0.0.4` 源码，需在该 tag 上复现。当前优化分别对比关闭目录哈希复用、安装历史索引、命令内来源共享、来源目录索引和路径名称预比较；实验脚本、原始数据与报告保留在本地，不纳入项目发布。
 
 CI 在 Linux、macOS 和 Windows 运行测试，Windows 另有 junction 集成测试；本机交叉编译不能替代 Windows 原生执行。源码继续使用 Go 单进程、TOML/JSON 文件与原有依赖，无数据库或后台服务。
 
