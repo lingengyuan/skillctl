@@ -1,0 +1,4833 @@
+{
+  "environment": {
+    "go": "go version go1.27.0 darwin/arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64"
+  },
+  "source_sha256": "8b8cd12ae36690f8624bb2e910a446fe29e82a62c4e7e0fb1d922e1f64fbb40d",
+  "rounds": 7,
+  "iterations": 3,
+  "seed": 77334,
+  "disabled": {
+    "full": [],
+    "no_history_filter": [
+      "history_filter"
+    ],
+    "no_buffer_reuse": [
+      "buffer_reuse"
+    ],
+    "no_source_index": [
+      "source_index"
+    ],
+    "no_dedup": [
+      "dedup"
+    ],
+    "serial": [
+      "parallel"
+    ],
+    "legacy_lock": [
+      "kernel_lock"
+    ],
+    "no_history_optimizations": [
+      "buffer_reuse",
+      "history_filter"
+    ],
+    "no_dedup_serial": [
+      "dedup",
+      "parallel"
+    ],
+    "all_off": [
+      "buffer_reuse",
+      "dedup",
+      "history_filter",
+      "kernel_lock",
+      "parallel",
+      "source_index"
+    ]
+  },
+  "runs": [
+    {
+      "variant": "all_off",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 675144556.0,
+        "syncs/op": 32.0,
+        "B/op": 142037.0,
+        "allocs/op": 1750.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 675144556 ns/op\t        32.00 syncs/op\t  142037 B/op\t    1750 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 120540903.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 47074122.0,
+        "allocs/op": 341654.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 120540903 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t47074122 B/op\t  341654 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20174972.0,
+        "MB/s": 841.45,
+        "B/op": 21575928.0,
+        "allocs/op": 33251.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  20174972 ns/op\t 841.45 MB/s\t21575928 B/op\t   33251 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51955403.0,
+        "timeouts/op": 1.0,
+        "B/op": 3565.0,
+        "allocs/op": 34.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51955403 ns/op\t         1.000 timeouts/op\t    3565 B/op\t      34 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42432986.0,
+        "syncs/op": 8.0,
+        "B/op": 96757.0,
+        "allocs/op": 1180.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42432986 ns/op\t         8.000 syncs/op\t   96757 B/op\t    1180 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17959986.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6123736.0,
+        "allocs/op": 55769.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17959986 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6123736 B/op\t   55769 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 24778028.0,
+        "MB/s": 685.13,
+        "B/op": 20038925.0,
+        "allocs/op": 4580.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  24778028 ns/op\t 685.13 MB/s\t20038925 B/op\t    4580 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 316139.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    316139 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42541167.0,
+        "syncs/op": 8.0,
+        "B/op": 97232.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42541167 ns/op\t         8.000 syncs/op\t   97232 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19710528.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135605.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19710528 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135605 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 24321847.0,
+        "MB/s": 697.98,
+        "B/op": 96037.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  24321847 ns/op\t 697.98 MB/s\t   96037 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51458514.0,
+        "timeouts/op": 1.0,
+        "B/op": 3522.0,
+        "allocs/op": 35.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51458514 ns/op\t         1.000 timeouts/op\t    3522 B/op\t      35 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 673094931.0,
+        "syncs/op": 32.0,
+        "B/op": 142058.0,
+        "allocs/op": 1749.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 673094931 ns/op\t        32.00 syncs/op\t  142058 B/op\t    1749 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17733097.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6154149.0,
+        "allocs/op": 55958.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17733097 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6154149 B/op\t   55958 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 23428306.0,
+        "MB/s": 724.6,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  23428306 ns/op\t 724.60 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 302570.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    302570 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42510222.0,
+        "syncs/op": 8.0,
+        "B/op": 97008.0,
+        "allocs/op": 1182.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42510222 ns/op\t         8.000 syncs/op\t   97008 B/op\t    1182 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18022139.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6137528.0,
+        "allocs/op": 55770.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  18022139 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6137528 B/op\t   55770 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 23490208.0,
+        "MB/s": 722.69,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  23490208 ns/op\t 722.69 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 326694.0,
+        "timeouts/op": 0.0,
+        "B/op": 1453.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    326694 ns/op\t         0 timeouts/op\t    1453 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42754430.0,
+        "syncs/op": 8.0,
+        "B/op": 97333.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42754430 ns/op\t         8.000 syncs/op\t   97333 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 114759125.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 47054624.0,
+        "allocs/op": 341457.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 114759125 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t47054624 B/op\t  341457 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 24764917.0,
+        "MB/s": 685.49,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  24764917 ns/op\t 685.49 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 139625.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    139625 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 169056917.0,
+        "syncs/op": 32.0,
+        "B/op": 146098.0,
+        "allocs/op": 1767.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 169056917 ns/op\t        32.00 syncs/op\t  146098 B/op\t    1767 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19070945.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6154981.0,
+        "allocs/op": 55961.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19070945 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6154981 B/op\t   55961 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 24255820.0,
+        "MB/s": 699.88,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  24255820 ns/op\t 699.88 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 255806.0,
+        "timeouts/op": 0.0,
+        "B/op": 1464.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    255806 ns/op\t         0 timeouts/op\t    1464 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42619708.0,
+        "syncs/op": 8.0,
+        "B/op": 97402.0,
+        "allocs/op": 1184.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42619708 ns/op\t         8.000 syncs/op\t   97402 B/op\t    1184 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19675945.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135941.0,
+        "allocs/op": 55770.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19675945 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135941 B/op\t   55770 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18123389.0,
+        "MB/s": 936.7,
+        "B/op": 21573962.0,
+        "allocs/op": 33242.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18123389 ns/op\t 936.70 MB/s\t21573962 B/op\t   33242 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 137250.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    137250 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 168963653.0,
+        "syncs/op": 8.0,
+        "B/op": 95450.0,
+        "allocs/op": 1173.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 168963653 ns/op\t         8.000 syncs/op\t   95450 B/op\t    1173 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18896903.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135984.0,
+        "allocs/op": 55771.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  18896903 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135984 B/op\t   55771 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 23555861.0,
+        "MB/s": 720.68,
+        "B/op": 95800.0,
+        "allocs/op": 422.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  23555861 ns/op\t 720.68 MB/s\t   95800 B/op\t     422 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 213597.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    213597 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42398458.0,
+        "syncs/op": 8.0,
+        "B/op": 96853.0,
+        "allocs/op": 1181.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42398458 ns/op\t         8.000 syncs/op\t   96853 B/op\t    1181 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 1,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18081472.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135696.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  18081472 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135696 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 1,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17311847.0,
+        "MB/s": 980.61,
+        "B/op": 1635853.0,
+        "allocs/op": 29094.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  17311847 ns/op\t 980.61 MB/s\t 1635853 B/op\t   29094 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 1,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 179042.0,
+        "timeouts/op": 0.0,
+        "B/op": 1464.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    179042 ns/op\t         0 timeouts/op\t    1464 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 168797639.0,
+        "syncs/op": 8.0,
+        "B/op": 95408.0,
+        "allocs/op": 1173.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 168797639 ns/op\t         8.000 syncs/op\t   95408 B/op\t    1173 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17981750.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6105936.0,
+        "allocs/op": 55769.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17981750 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6105936 B/op\t   55769 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18187389.0,
+        "MB/s": 933.4,
+        "B/op": 95901.0,
+        "allocs/op": 422.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18187389 ns/op\t 933.40 MB/s\t   95901 B/op\t     422 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 111653.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    111653 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 168169306.0,
+        "syncs/op": 32.0,
+        "B/op": 146152.0,
+        "allocs/op": 1766.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 168169306 ns/op\t        32.00 syncs/op\t  146152 B/op\t    1766 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17762403.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6154848.0,
+        "allocs/op": 55961.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17762403 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6154848 B/op\t   55961 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18222667.0,
+        "MB/s": 931.59,
+        "B/op": 95901.0,
+        "allocs/op": 422.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18222667 ns/op\t 931.59 MB/s\t   95901 B/op\t     422 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 133569.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    133569 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 677163208.0,
+        "syncs/op": 32.0,
+        "B/op": 142048.0,
+        "allocs/op": 1750.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 677163208 ns/op\t        32.00 syncs/op\t  142048 B/op\t    1750 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 116700681.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 47073338.0,
+        "allocs/op": 341644.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 116700681 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t47073338 B/op\t  341644 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13613750.0,
+        "MB/s": 1246.99,
+        "B/op": 21574106.0,
+        "allocs/op": 33246.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13613750 ns/op\t1246.99 MB/s\t21574106 B/op\t   33246 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51213028.0,
+        "timeouts/op": 1.0,
+        "B/op": 3522.0,
+        "allocs/op": 35.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51213028 ns/op\t         1.000 timeouts/op\t    3522 B/op\t      35 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42284667.0,
+        "syncs/op": 8.0,
+        "B/op": 97157.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42284667 ns/op\t         8.000 syncs/op\t   97157 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19319611.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6105106.0,
+        "allocs/op": 55765.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19319611 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6105106 B/op\t   55765 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19621389.0,
+        "MB/s": 865.19,
+        "B/op": 95688.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19621389 ns/op\t 865.19 MB/s\t   95688 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 147070.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    147070 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 673593250.0,
+        "syncs/op": 32.0,
+        "B/op": 142245.0,
+        "allocs/op": 1752.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 673593250 ns/op\t        32.00 syncs/op\t  142245 B/op\t    1752 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17862903.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6142610.0,
+        "allocs/op": 55960.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17862903 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6142610 B/op\t   55960 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18176847.0,
+        "MB/s": 933.94,
+        "B/op": 95794.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18176847 ns/op\t 933.94 MB/s\t   95794 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 139111.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    139111 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42247389.0,
+        "syncs/op": 8.0,
+        "B/op": 97338.0,
+        "allocs/op": 1184.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42247389 ns/op\t         8.000 syncs/op\t   97338 B/op\t    1184 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16258069.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135653.0,
+        "allocs/op": 55770.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16258069 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135653 B/op\t   55770 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20630375.0,
+        "MB/s": 822.87,
+        "B/op": 20033538.0,
+        "allocs/op": 4569.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  20630375 ns/op\t 822.87 MB/s\t20033538 B/op\t    4569 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 100111.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    100111 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42228903.0,
+        "syncs/op": 8.0,
+        "B/op": 97360.0,
+        "allocs/op": 1184.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42228903 ns/op\t         8.000 syncs/op\t   97360 B/op\t    1184 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16858528.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135840.0,
+        "allocs/op": 55771.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16858528 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135840 B/op\t   55771 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18187945.0,
+        "MB/s": 933.37,
+        "B/op": 95901.0,
+        "allocs/op": 422.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18187945 ns/op\t 933.37 MB/s\t   95901 B/op\t     422 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51243361.0,
+        "timeouts/op": 1.0,
+        "B/op": 3565.0,
+        "allocs/op": 34.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51243361 ns/op\t         1.000 timeouts/op\t    3565 B/op\t      34 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42287945.0,
+        "syncs/op": 8.0,
+        "B/op": 97338.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42287945 ns/op\t         8.000 syncs/op\t   97338 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19679708.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6121720.0,
+        "allocs/op": 55765.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19679708 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6121720 B/op\t   55765 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 12712167.0,
+        "MB/s": 1335.42,
+        "B/op": 1635901.0,
+        "allocs/op": 29094.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  12712167 ns/op\t1335.42 MB/s\t 1635901 B/op\t   29094 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 108847.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    108847 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42335833.0,
+        "syncs/op": 8.0,
+        "B/op": 97344.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42335833 ns/op\t         8.000 syncs/op\t   97344 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 116122403.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 47054080.0,
+        "allocs/op": 341449.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 116122403 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t47054080 B/op\t  341449 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18331958.0,
+        "MB/s": 926.04,
+        "B/op": 96037.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18331958 ns/op\t 926.04 MB/s\t   96037 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 145847.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    145847 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42295875.0,
+        "syncs/op": 8.0,
+        "B/op": 96981.0,
+        "allocs/op": 1182.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42295875 ns/op\t         8.000 syncs/op\t   96981 B/op\t    1182 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 2,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 15957833.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135224.0,
+        "allocs/op": 55766.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  15957833 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135224 B/op\t   55766 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 2,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 14079070.0,
+        "MB/s": 1205.77,
+        "B/op": 21570298.0,
+        "allocs/op": 33238.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  14079070 ns/op\t1205.77 MB/s\t21570298 B/op\t   33238 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 2,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 100180.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    100180 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42074333.0,
+        "syncs/op": 8.0,
+        "B/op": 97642.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42074333 ns/op\t         8.000 syncs/op\t   97642 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 15946125.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135488.0,
+        "allocs/op": 55768.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  15946125 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135488 B/op\t   55768 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13025375.0,
+        "MB/s": 1303.31,
+        "B/op": 1635954.0,
+        "allocs/op": 29095.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13025375 ns/op\t1303.31 MB/s\t 1635954 B/op\t   29095 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 97069.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t     97069 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42207125.0,
+        "syncs/op": 8.0,
+        "B/op": 97285.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42207125 ns/op\t         8.000 syncs/op\t   97285 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 114548500.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 47041130.0,
+        "allocs/op": 341454.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 114548500 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t47041130 B/op\t  341454 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18383403.0,
+        "MB/s": 923.45,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18383403 ns/op\t 923.45 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 165556.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    165556 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 169022903.0,
+        "syncs/op": 8.0,
+        "B/op": 95360.0,
+        "allocs/op": 1172.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 169022903 ns/op\t         8.000 syncs/op\t   95360 B/op\t    1172 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20594569.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135722.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  20594569 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135722 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19693500.0,
+        "MB/s": 862.02,
+        "B/op": 95848.0,
+        "allocs/op": 422.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19693500 ns/op\t 862.02 MB/s\t   95848 B/op\t     422 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 234097.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    234097 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42361556.0,
+        "syncs/op": 8.0,
+        "B/op": 97232.0,
+        "allocs/op": 1184.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42361556 ns/op\t         8.000 syncs/op\t   97232 B/op\t    1184 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16871042.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135138.0,
+        "allocs/op": 55765.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16871042 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135138 B/op\t   55765 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18689083.0,
+        "MB/s": 908.35,
+        "B/op": 95794.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18689083 ns/op\t 908.35 MB/s\t   95794 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 154236.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    154236 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 672491903.0,
+        "syncs/op": 32.0,
+        "B/op": 142389.0,
+        "allocs/op": 1752.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 672491903 ns/op\t        32.00 syncs/op\t  142389 B/op\t    1752 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 117484597.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 47074845.0,
+        "allocs/op": 341647.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 117484597 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t47074845 B/op\t  341647 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13894972.0,
+        "MB/s": 1221.75,
+        "B/op": 21581205.0,
+        "allocs/op": 33260.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13894972 ns/op\t1221.75 MB/s\t21581205 B/op\t   33260 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51058139.0,
+        "timeouts/op": 1.0,
+        "B/op": 3448.0,
+        "allocs/op": 36.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51058139 ns/op\t         1.000 timeouts/op\t    3448 B/op\t      36 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 169443320.0,
+        "syncs/op": 32.0,
+        "B/op": 144666.0,
+        "allocs/op": 1765.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 169443320 ns/op\t        32.00 syncs/op\t  144666 B/op\t    1765 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16816528.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6154933.0,
+        "allocs/op": 55964.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16816528 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6154933 B/op\t   55964 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20372792.0,
+        "MB/s": 833.28,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  20372792 ns/op\t 833.28 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 105792.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    105792 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 41810528.0,
+        "syncs/op": 8.0,
+        "B/op": 97472.0,
+        "allocs/op": 1184.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  41810528 ns/op\t         8.000 syncs/op\t   97472 B/op\t    1184 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16062944.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135488.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16062944 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135488 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 15122417.0,
+        "MB/s": 1122.58,
+        "B/op": 21567325.0,
+        "allocs/op": 33228.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  15122417 ns/op\t1122.58 MB/s\t21567325 B/op\t   33228 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 107972.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    107972 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 672016986.0,
+        "syncs/op": 32.0,
+        "B/op": 142341.0,
+        "allocs/op": 1752.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 672016986 ns/op\t        32.00 syncs/op\t  142341 B/op\t    1752 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18516472.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6141280.0,
+        "allocs/op": 55959.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  18516472 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6141280 B/op\t   55959 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19591806.0,
+        "MB/s": 866.49,
+        "B/op": 95984.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19591806 ns/op\t 866.49 MB/s\t   95984 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 140236.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    140236 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42104181.0,
+        "syncs/op": 8.0,
+        "B/op": 97424.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42104181 ns/op\t         8.000 syncs/op\t   97424 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17260931.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135554.0,
+        "allocs/op": 55768.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17260931 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135554 B/op\t   55768 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19810167.0,
+        "MB/s": 856.94,
+        "B/op": 20050109.0,
+        "allocs/op": 4606.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19810167 ns/op\t 856.94 MB/s\t20050109 B/op\t    4606 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 95889.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t     95889 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42270014.0,
+        "syncs/op": 8.0,
+        "B/op": 97130.0,
+        "allocs/op": 1181.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42270014 ns/op\t         8.000 syncs/op\t   97130 B/op\t    1181 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 3,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17291972.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6137096.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17291972 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6137096 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 3,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18361708.0,
+        "MB/s": 924.54,
+        "B/op": 95794.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18361708 ns/op\t 924.54 MB/s\t   95794 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 3,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51347458.0,
+        "timeouts/op": 1.0,
+        "B/op": 3421.0,
+        "allocs/op": 34.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51347458 ns/op\t         1.000 timeouts/op\t    3421 B/op\t      34 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42381056.0,
+        "syncs/op": 8.0,
+        "B/op": 96944.0,
+        "allocs/op": 1182.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42381056 ns/op\t         8.000 syncs/op\t   96944 B/op\t    1182 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 21746292.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6121984.0,
+        "allocs/op": 55765.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  21746292 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6121984 B/op\t   55765 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19433222.0,
+        "MB/s": 873.56,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19433222 ns/op\t 873.56 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 147028.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    147028 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 168311917.0,
+        "syncs/op": 8.0,
+        "B/op": 95189.0,
+        "allocs/op": 1171.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 168311917 ns/op\t         8.000 syncs/op\t   95189 B/op\t    1171 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19490695.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135616.0,
+        "allocs/op": 55768.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19490695 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135616 B/op\t   55768 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19396583.0,
+        "MB/s": 875.21,
+        "B/op": 96037.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19396583 ns/op\t 875.21 MB/s\t   96037 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 186389.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    186389 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42391028.0,
+        "syncs/op": 8.0,
+        "B/op": 97680.0,
+        "allocs/op": 1186.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42391028 ns/op\t         8.000 syncs/op\t   97680 B/op\t    1186 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17181028.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135733.0,
+        "allocs/op": 55769.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17181028 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135733 B/op\t   55769 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 14555236.0,
+        "MB/s": 1166.33,
+        "B/op": 21568605.0,
+        "allocs/op": 33233.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  14555236 ns/op\t1166.33 MB/s\t21568605 B/op\t   33233 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 102917.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    102917 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 676985500.0,
+        "syncs/op": 32.0,
+        "B/op": 142122.0,
+        "allocs/op": 1750.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 676985500 ns/op\t        32.00 syncs/op\t  142122 B/op\t    1750 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 131826597.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 47073482.0,
+        "allocs/op": 341647.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 131826597 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t47073482 B/op\t  341647 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 14797764.0,
+        "MB/s": 1147.21,
+        "B/op": 21573898.0,
+        "allocs/op": 33241.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  14797764 ns/op\t1147.21 MB/s\t21573898 B/op\t   33241 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51197292.0,
+        "timeouts/op": 1.0,
+        "B/op": 3013.0,
+        "allocs/op": 31.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51197292 ns/op\t         1.000 timeouts/op\t    3013 B/op\t      31 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 169273083.0,
+        "syncs/op": 32.0,
+        "B/op": 146306.0,
+        "allocs/op": 1767.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 169273083 ns/op\t        32.00 syncs/op\t  146306 B/op\t    1767 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18983083.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6156053.0,
+        "allocs/op": 55970.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  18983083 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6156053 B/op\t   55970 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18837930.0,
+        "MB/s": 901.17,
+        "B/op": 96037.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18837930 ns/op\t 901.17 MB/s\t   96037 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 112153.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    112153 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42172764.0,
+        "syncs/op": 8.0,
+        "B/op": 97296.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42172764 ns/op\t         8.000 syncs/op\t   97296 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 15937347.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6122000.0,
+        "allocs/op": 55766.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  15937347 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6122000 B/op\t   55766 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18293305.0,
+        "MB/s": 928.0,
+        "B/op": 95794.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18293305 ns/op\t 928.00 MB/s\t   95794 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 50997681.0,
+        "timeouts/op": 1.0,
+        "B/op": 3426.0,
+        "allocs/op": 36.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  50997681 ns/op\t         1.000 timeouts/op\t    3426 B/op\t      36 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 41725486.0,
+        "syncs/op": 8.0,
+        "B/op": 96773.0,
+        "allocs/op": 1181.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  41725486 ns/op\t         8.000 syncs/op\t   96773 B/op\t    1181 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18417931.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135186.0,
+        "allocs/op": 55766.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  18417931 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135186 B/op\t   55766 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13154028.0,
+        "MB/s": 1290.57,
+        "B/op": 1635848.0,
+        "allocs/op": 29094.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13154028 ns/op\t1290.57 MB/s\t 1635848 B/op\t   29094 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 120361.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    120361 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 670263430.0,
+        "syncs/op": 32.0,
+        "B/op": 142341.0,
+        "allocs/op": 1752.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 670263430 ns/op\t        32.00 syncs/op\t  142341 B/op\t    1752 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19340542.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6154933.0,
+        "allocs/op": 55963.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19340542 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6154933 B/op\t   55963 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19110097.0,
+        "MB/s": 888.33,
+        "B/op": 95688.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19110097 ns/op\t 888.33 MB/s\t   95688 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 171458.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    171458 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 41745986.0,
+        "syncs/op": 8.0,
+        "B/op": 96997.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  41745986 ns/op\t         8.000 syncs/op\t   96997 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17118972.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135133.0,
+        "allocs/op": 55765.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17118972 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135133 B/op\t   55765 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20123375.0,
+        "MB/s": 843.6,
+        "B/op": 20040634.0,
+        "allocs/op": 4584.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  20123375 ns/op\t 843.60 MB/s\t20040634 B/op\t    4584 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 150764.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    150764 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42257931.0,
+        "syncs/op": 8.0,
+        "B/op": 97530.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42257931 ns/op\t         8.000 syncs/op\t   97530 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 4,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 126529639.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 47053976.0,
+        "allocs/op": 341451.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 126529639 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t47053976 B/op\t  341451 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 4,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20086000.0,
+        "MB/s": 845.17,
+        "B/op": 95848.0,
+        "allocs/op": 422.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  20086000 ns/op\t 845.17 MB/s\t   95848 B/op\t     422 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 4,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 106972.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    106972 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 167745722.0,
+        "syncs/op": 8.0,
+        "B/op": 95018.0,
+        "allocs/op": 1169.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 167745722 ns/op\t         8.000 syncs/op\t   95018 B/op\t    1169 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19852861.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6136458.0,
+        "allocs/op": 55773.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19852861 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6136458 B/op\t   55773 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19180305.0,
+        "MB/s": 885.08,
+        "B/op": 95984.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19180305 ns/op\t 885.08 MB/s\t   95984 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 165208.0,
+        "timeouts/op": 0.0,
+        "B/op": 1453.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    165208 ns/op\t         0 timeouts/op\t    1453 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42219320.0,
+        "syncs/op": 8.0,
+        "B/op": 97152.0,
+        "allocs/op": 1182.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42219320 ns/op\t         8.000 syncs/op\t   97152 B/op\t    1182 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17191847.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135490.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17191847 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135490 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13841750.0,
+        "MB/s": 1226.44,
+        "B/op": 1635901.0,
+        "allocs/op": 29094.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13841750 ns/op\t1226.44 MB/s\t 1635901 B/op\t   29094 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 105917.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    105917 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42306167.0,
+        "syncs/op": 8.0,
+        "B/op": 97130.0,
+        "allocs/op": 1181.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42306167 ns/op\t         8.000 syncs/op\t   97130 B/op\t    1181 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16967611.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135477.0,
+        "allocs/op": 55768.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16967611 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135477 B/op\t   55768 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13800736.0,
+        "MB/s": 1230.09,
+        "B/op": 21577968.0,
+        "allocs/op": 33255.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13800736 ns/op\t1230.09 MB/s\t21577968 B/op\t   33255 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 107708.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    107708 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 672135153.0,
+        "syncs/op": 32.0,
+        "B/op": 142384.0,
+        "allocs/op": 1753.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 672135153 ns/op\t        32.00 syncs/op\t  142384 B/op\t    1753 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 130522375.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 47073434.0,
+        "allocs/op": 341644.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 130522375 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t47073434 B/op\t  341644 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13802278.0,
+        "MB/s": 1229.95,
+        "B/op": 21572269.0,
+        "allocs/op": 33240.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13802278 ns/op\t1229.95 MB/s\t21572269 B/op\t   33240 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51244695.0,
+        "timeouts/op": 1.0,
+        "B/op": 3261.0,
+        "allocs/op": 33.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51244695 ns/op\t         1.000 timeouts/op\t    3261 B/op\t      33 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 675369194.0,
+        "syncs/op": 32.0,
+        "B/op": 142288.0,
+        "allocs/op": 1752.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 675369194 ns/op\t        32.00 syncs/op\t  142288 B/op\t    1752 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20264139.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6140938.0,
+        "allocs/op": 55961.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  20264139 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6140938 B/op\t   55961 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19276236.0,
+        "MB/s": 880.68,
+        "B/op": 95794.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19276236 ns/op\t 880.68 MB/s\t   95794 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 113792.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    113792 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42192139.0,
+        "syncs/op": 8.0,
+        "B/op": 97184.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42192139 ns/op\t         8.000 syncs/op\t   97184 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16736097.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135509.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16736097 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135509 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18333000.0,
+        "MB/s": 925.99,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18333000 ns/op\t 925.99 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 114347.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    114347 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 168962764.0,
+        "syncs/op": 32.0,
+        "B/op": 144938.0,
+        "allocs/op": 1769.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 168962764 ns/op\t        32.00 syncs/op\t  144938 B/op\t    1769 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19529153.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6142448.0,
+        "allocs/op": 55968.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19529153 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6142448 B/op\t   55968 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19908903.0,
+        "MB/s": 852.69,
+        "B/op": 96021.0,
+        "allocs/op": 422.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19908903 ns/op\t 852.69 MB/s\t   96021 B/op\t     422 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 127000.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    127000 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 41899431.0,
+        "syncs/op": 8.0,
+        "B/op": 97232.0,
+        "allocs/op": 1182.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  41899431 ns/op\t         8.000 syncs/op\t   97232 B/op\t    1182 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 120704097.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 47053898.0,
+        "allocs/op": 341446.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 120704097 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t47053898 B/op\t  341446 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18891167.0,
+        "MB/s": 898.63,
+        "B/op": 95794.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18891167 ns/op\t 898.63 MB/s\t   95794 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 107111.0,
+        "timeouts/op": 0.0,
+        "B/op": 1464.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    107111 ns/op\t         0 timeouts/op\t    1464 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42058861.0,
+        "syncs/op": 8.0,
+        "B/op": 97418.0,
+        "allocs/op": 1184.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42058861 ns/op\t         8.000 syncs/op\t   97418 B/op\t    1184 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16653278.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6137162.0,
+        "allocs/op": 55768.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16653278 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6137162 B/op\t   55768 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18635472.0,
+        "MB/s": 910.96,
+        "B/op": 95848.0,
+        "allocs/op": 422.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18635472 ns/op\t 910.96 MB/s\t   95848 B/op\t     422 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51277875.0,
+        "timeouts/op": 1.0,
+        "B/op": 3560.0,
+        "allocs/op": 34.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51277875 ns/op\t         1.000 timeouts/op\t    3560 B/op\t      34 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42535833.0,
+        "syncs/op": 8.0,
+        "B/op": 97408.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42535833 ns/op\t         8.000 syncs/op\t   97408 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 5,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19681139.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135288.0,
+        "allocs/op": 55765.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  19681139 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135288 B/op\t   55765 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 5,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20661361.0,
+        "MB/s": 821.64,
+        "B/op": 20040728.0,
+        "allocs/op": 4585.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  20661361 ns/op\t 821.64 MB/s\t20040728 B/op\t    4585 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 5,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 166528.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    166528 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42162458.0,
+        "syncs/op": 8.0,
+        "B/op": 96832.0,
+        "allocs/op": 1182.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42162458 ns/op\t         8.000 syncs/op\t   96832 B/op\t    1182 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 34974194.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6122410.0,
+        "allocs/op": 55771.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  34974194 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6122410 B/op\t   55771 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13864042.0,
+        "MB/s": 1224.47,
+        "B/op": 1635901.0,
+        "allocs/op": 29094.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13864042 ns/op\t1224.47 MB/s\t 1635901 B/op\t   29094 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 101180.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    101180 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42253028.0,
+        "syncs/op": 8.0,
+        "B/op": 97285.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42253028 ns/op\t         8.000 syncs/op\t   97285 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 15788194.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135274.0,
+        "allocs/op": 55765.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  15788194 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135274 B/op\t   55765 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19392514.0,
+        "MB/s": 875.4,
+        "B/op": 20037170.0,
+        "allocs/op": 4577.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19392514 ns/op\t 875.40 MB/s\t20037170 B/op\t    4577 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 142569.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    142569 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42163764.0,
+        "syncs/op": 8.0,
+        "B/op": 97072.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42163764 ns/op\t         8.000 syncs/op\t   97072 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16138972.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135621.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16138972 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135621 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18805070.0,
+        "MB/s": 902.74,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18805070 ns/op\t 902.74 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 94806.0,
+        "timeouts/op": 0.0,
+        "B/op": 1453.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t     94806 ns/op\t         0 timeouts/op\t    1453 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42147417.0,
+        "syncs/op": 8.0,
+        "B/op": 97205.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42147417 ns/op\t         8.000 syncs/op\t   97205 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 117551097.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 47051834.0,
+        "allocs/op": 341445.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 117551097 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t47051834 B/op\t  341445 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18641389.0,
+        "MB/s": 910.67,
+        "B/op": 95984.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18641389 ns/op\t 910.67 MB/s\t   95984 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 142681.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    142681 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 168638014.0,
+        "syncs/op": 8.0,
+        "B/op": 95360.0,
+        "allocs/op": 1172.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 168638014 ns/op\t         8.000 syncs/op\t   95360 B/op\t    1172 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17668653.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135973.0,
+        "allocs/op": 55769.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17668653 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135973 B/op\t   55769 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18576625.0,
+        "MB/s": 913.84,
+        "B/op": 96037.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18576625 ns/op\t 913.84 MB/s\t   96037 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 151625.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    151625 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 681174139.0,
+        "syncs/op": 32.0,
+        "B/op": 142357.0,
+        "allocs/op": 1751.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 681174139 ns/op\t        32.00 syncs/op\t  142357 B/op\t    1751 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17979528.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6154181.0,
+        "allocs/op": 55958.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17979528 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6154181 B/op\t   55958 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18134514.0,
+        "MB/s": 936.12,
+        "B/op": 95794.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18134514 ns/op\t 936.12 MB/s\t   95794 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 153333.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    153333 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42063264.0,
+        "syncs/op": 8.0,
+        "B/op": 97029.0,
+        "allocs/op": 1182.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42063264 ns/op\t         8.000 syncs/op\t   97029 B/op\t    1182 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 15733917.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6137178.0,
+        "allocs/op": 55767.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  15733917 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6137178 B/op\t   55767 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13635889.0,
+        "MB/s": 1244.96,
+        "B/op": 21570218.0,
+        "allocs/op": 33237.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13635889 ns/op\t1244.96 MB/s\t21570218 B/op\t   33237 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 99500.0,
+        "timeouts/op": 0.0,
+        "B/op": 1453.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t     99500 ns/op\t         0 timeouts/op\t    1453 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42266639.0,
+        "syncs/op": 8.0,
+        "B/op": 97061.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42266639 ns/op\t         8.000 syncs/op\t   97061 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 15806430.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135616.0,
+        "allocs/op": 55768.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  15806430 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135616 B/op\t   55768 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18062945.0,
+        "MB/s": 939.83,
+        "B/op": 97661.0,
+        "allocs/op": 426.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18062945 ns/op\t 939.83 MB/s\t   97661 B/op\t     426 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51149375.0,
+        "timeouts/op": 1.0,
+        "B/op": 3474.0,
+        "allocs/op": 33.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51149375 ns/op\t         1.000 timeouts/op\t    3474 B/op\t      33 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 169332458.0,
+        "syncs/op": 32.0,
+        "B/op": 144544.0,
+        "allocs/op": 1766.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 169332458 ns/op\t        32.00 syncs/op\t  144544 B/op\t    1766 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18193542.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6154800.0,
+        "allocs/op": 55962.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  18193542 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6154800 B/op\t   55962 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18112778.0,
+        "MB/s": 937.25,
+        "B/op": 96037.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18112778 ns/op\t 937.25 MB/s\t   96037 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 145708.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    145708 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 674240375.0,
+        "syncs/op": 32.0,
+        "B/op": 142517.0,
+        "allocs/op": 1754.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 674240375 ns/op\t        32.00 syncs/op\t  142517 B/op\t    1754 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 6,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 116962556.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 47072448.0,
+        "allocs/op": 341631.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 116962556 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t47072448 B/op\t  341631 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 6,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13875444.0,
+        "MB/s": 1223.47,
+        "B/op": 21569090.0,
+        "allocs/op": 33232.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13875444 ns/op\t1223.47 MB/s\t21569090 B/op\t   33232 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 6,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51197125.0,
+        "timeouts/op": 1.0,
+        "B/op": 3421.0,
+        "allocs/op": 34.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51197125 ns/op\t         1.000 timeouts/op\t    3421 B/op\t      34 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 169154389.0,
+        "syncs/op": 8.0,
+        "B/op": 95221.0,
+        "allocs/op": 1171.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 169154389 ns/op\t         8.000 syncs/op\t   95221 B/op\t    1171 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18063000.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6122336.0,
+        "allocs/op": 55768.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  18063000 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6122336 B/op\t   55768 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18094569.0,
+        "MB/s": 938.19,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18094569 ns/op\t 938.19 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "serial",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 139472.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    139472 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 675308625.0,
+        "syncs/op": 32.0,
+        "B/op": 142373.0,
+        "allocs/op": 1752.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 675308625 ns/op\t        32.00 syncs/op\t  142373 B/op\t    1752 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 23639708.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6155077.0,
+        "allocs/op": 55966.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  23639708 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6155077 B/op\t   55966 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18536444.0,
+        "MB/s": 915.83,
+        "B/op": 96042.0,
+        "allocs/op": 423.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18536444 ns/op\t 915.83 MB/s\t   96042 B/op\t     423 allocs/op"
+    },
+    {
+      "variant": "no_dedup_serial",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 104250.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    104250 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 168425000.0,
+        "syncs/op": 32.0,
+        "B/op": 144421.0,
+        "allocs/op": 1764.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 168425000 ns/op\t        32.00 syncs/op\t  144421 B/op\t    1764 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20255208.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 6155818.0,
+        "allocs/op": 55967.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  20255208 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t 6155818 B/op\t   55967 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 18941208.0,
+        "MB/s": 896.25,
+        "B/op": 97608.0,
+        "allocs/op": 426.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  18941208 ns/op\t 896.25 MB/s\t   97608 B/op\t     426 allocs/op"
+    },
+    {
+      "variant": "no_dedup",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 108000.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    108000 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 674557292.0,
+        "syncs/op": 32.0,
+        "B/op": 142064.0,
+        "allocs/op": 1750.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t 674557292 ns/op\t        32.00 syncs/op\t  142064 B/op\t    1750 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 121865500.0,
+        "syncs/op": 20.0,
+        "verified/op": 20.0,
+        "B/op": 47073024.0,
+        "allocs/op": 341642.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 121865500 ns/op\t        20.00 syncs/op\t        20.00 verified/op\t47073024 B/op\t  341642 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13878097.0,
+        "MB/s": 1223.23,
+        "B/op": 21567410.0,
+        "allocs/op": 33225.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13878097 ns/op\t1223.23 MB/s\t21567410 B/op\t   33225 allocs/op"
+    },
+    {
+      "variant": "all_off",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 50836194.0,
+        "timeouts/op": 1.0,
+        "B/op": 3602.0,
+        "allocs/op": 36.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  50836194 ns/op\t         1.000 timeouts/op\t    3602 B/op\t      36 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42514389.0,
+        "syncs/op": 8.0,
+        "B/op": 97472.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42514389 ns/op\t         8.000 syncs/op\t   97472 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 129432264.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 47041413.0,
+        "allocs/op": 341460.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t 129432264 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t47041413 B/op\t  341460 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19572903.0,
+        "MB/s": 867.33,
+        "B/op": 95688.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19572903 ns/op\t 867.33 MB/s\t   95688 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "no_source_index",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 103125.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    103125 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42288944.0,
+        "syncs/op": 8.0,
+        "B/op": 97418.0,
+        "allocs/op": 1186.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42288944 ns/op\t         8.000 syncs/op\t   97418 B/op\t    1186 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17377917.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135157.0,
+        "allocs/op": 55764.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17377917 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135157 B/op\t   55764 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19115083.0,
+        "MB/s": 888.1,
+        "B/op": 97714.0,
+        "allocs/op": 427.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19115083 ns/op\t 888.10 MB/s\t   97714 B/op\t     427 allocs/op"
+    },
+    {
+      "variant": "full",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 109611.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    109611 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42339153.0,
+        "syncs/op": 8.0,
+        "B/op": 97248.0,
+        "allocs/op": 1183.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42339153 ns/op\t         8.000 syncs/op\t   97248 B/op\t    1183 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17423319.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6137389.0,
+        "allocs/op": 55770.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17423319 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6137389 B/op\t   55770 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 15363667.0,
+        "MB/s": 1104.95,
+        "B/op": 21574141.0,
+        "allocs/op": 33248.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  15363667 ns/op\t1104.95 MB/s\t21574141 B/op\t   33248 allocs/op"
+    },
+    {
+      "variant": "no_history_optimizations",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 107528.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    107528 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42072070.0,
+        "syncs/op": 8.0,
+        "B/op": 97456.0,
+        "allocs/op": 1185.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42072070 ns/op\t         8.000 syncs/op\t   97456 B/op\t    1185 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 17628139.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6135016.0,
+        "allocs/op": 55763.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  17628139 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6135016 B/op\t   55763 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 20571917.0,
+        "MB/s": 825.21,
+        "B/op": 20034136.0,
+        "allocs/op": 4565.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  20571917 ns/op\t 825.21 MB/s\t20034136 B/op\t    4565 allocs/op"
+    },
+    {
+      "variant": "no_buffer_reuse",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 109750.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    109750 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 43159097.0,
+        "syncs/op": 8.0,
+        "B/op": 97418.0,
+        "allocs/op": 1184.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  43159097 ns/op\t         8.000 syncs/op\t   97418 B/op\t    1184 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 16939667.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6137709.0,
+        "allocs/op": 55772.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  16939667 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6137709 B/op\t   55772 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 19265167.0,
+        "MB/s": 881.18,
+        "B/op": 95741.0,
+        "allocs/op": 421.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  19265167 ns/op\t 881.18 MB/s\t   95741 B/op\t     421 allocs/op"
+    },
+    {
+      "variant": "legacy_lock",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 51106486.0,
+        "timeouts/op": 1.0,
+        "B/op": 3421.0,
+        "allocs/op": 34.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t  51106486 ns/op\t         1.000 timeouts/op\t    3421 B/op\t      34 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryFailed",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 42333528.0,
+        "syncs/op": 8.0,
+        "B/op": 97061.0,
+        "allocs/op": 1180.0
+      },
+      "raw": "BenchmarkAblationRecoveryFailed-4     \t       3\t  42333528 ns/op\t         8.000 syncs/op\t   97061 B/op\t    1180 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 7,
+      "benchmark": "BenchmarkAblationRecoveryVerified",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 21487931.0,
+        "syncs/op": 1.0,
+        "verified/op": 20.0,
+        "B/op": 6137682.0,
+        "allocs/op": 55772.0
+      },
+      "raw": "BenchmarkAblationRecoveryVerified-4   \t       3\t  21487931 ns/op\t         1.000 syncs/op\t        20.00 verified/op\t 6137682 B/op\t   55772 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 7,
+      "benchmark": "BenchmarkAblationHistory",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 13740333.0,
+        "MB/s": 1235.5,
+        "B/op": 1635848.0,
+        "allocs/op": 29094.0
+      },
+      "raw": "BenchmarkAblationHistory-4   \t       3\t  13740333 ns/op\t1235.50 MB/s\t 1635848 B/op\t   29094 allocs/op"
+    },
+    {
+      "variant": "no_history_filter",
+      "round": 7,
+      "benchmark": "BenchmarkAblationExitedLock",
+      "iterations": 3,
+      "metrics": {
+        "ns/op": 141056.0,
+        "timeouts/op": 0.0,
+        "B/op": 1458.0,
+        "allocs/op": 20.0
+      },
+      "raw": "BenchmarkAblationExitedLock-4   \t       3\t    141056 ns/op\t         0 timeouts/op\t    1458 B/op\t      20 allocs/op"
+    }
+  ],
+  "elapsed_seconds": 84.766,
+  "summary": {
+    "full": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 147028.0,
+            "min": 94806.0,
+            "max": 326694.0
+          },
+          "timeouts/op": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "B/op": {
+            "median": 1458.0,
+            "min": 1453.0,
+            "max": 1458.0
+          },
+          "allocs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 19115083.0,
+            "min": 18333000.0,
+            "max": 23490208.0
+          },
+          "MB/s": {
+            "median": 888.1,
+            "min": 722.69,
+            "max": 925.99
+          },
+          "B/op": {
+            "median": 95741.0,
+            "min": 95688.0,
+            "max": 97714.0
+          },
+          "allocs/op": {
+            "median": 421.0,
+            "min": 421.0,
+            "max": 427.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 42288944.0,
+            "min": 42163764.0,
+            "max": 42510222.0
+          },
+          "syncs/op": {
+            "median": 8.0,
+            "min": 8.0,
+            "max": 8.0
+          },
+          "B/op": {
+            "median": 97157.0,
+            "min": 96944.0,
+            "max": 97418.0
+          },
+          "allocs/op": {
+            "median": 1183.0,
+            "min": 1182.0,
+            "max": 1186.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 17377917.0,
+            "min": 16138972.0,
+            "max": 21746292.0
+          },
+          "syncs/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 6135157.0,
+            "min": 6105106.0,
+            "max": 6137528.0
+          },
+          "allocs/op": {
+            "median": 55765.0,
+            "min": 55764.0,
+            "max": 55770.0
+          }
+        }
+      }
+    },
+    "no_history_filter": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 108847.0,
+            "min": 97069.0,
+            "max": 179042.0
+          },
+          "timeouts/op": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "B/op": {
+            "median": 1458.0,
+            "min": 1458.0,
+            "max": 1464.0
+          },
+          "allocs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 13740333.0,
+            "min": 12712167.0,
+            "max": 17311847.0
+          },
+          "MB/s": {
+            "median": 1235.5,
+            "min": 980.61,
+            "max": 1335.42
+          },
+          "B/op": {
+            "median": 1635901.0,
+            "min": 1635848.0,
+            "max": 1635954.0
+          },
+          "allocs/op": {
+            "median": 29094.0,
+            "min": 29094.0,
+            "max": 29095.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 42219320.0,
+            "min": 41725486.0,
+            "max": 42398458.0
+          },
+          "syncs/op": {
+            "median": 8.0,
+            "min": 8.0,
+            "max": 8.0
+          },
+          "B/op": {
+            "median": 97061.0,
+            "min": 96773.0,
+            "max": 97642.0
+          },
+          "allocs/op": {
+            "median": 1182.0,
+            "min": 1180.0,
+            "max": 1185.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 18417931.0,
+            "min": 15946125.0,
+            "max": 34974194.0
+          },
+          "syncs/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 6135488.0,
+            "min": 6121720.0,
+            "max": 6137682.0
+          },
+          "allocs/op": {
+            "median": 55767.0,
+            "min": 55765.0,
+            "max": 55772.0
+          }
+        }
+      }
+    },
+    "no_buffer_reuse": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 142569.0,
+            "min": 95889.0,
+            "max": 316139.0
+          },
+          "timeouts/op": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "B/op": {
+            "median": 1458.0,
+            "min": 1458.0,
+            "max": 1458.0
+          },
+          "allocs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 20571917.0,
+            "min": 19392514.0,
+            "max": 24778028.0
+          },
+          "MB/s": {
+            "median": 825.21,
+            "min": 685.13,
+            "max": 875.4
+          },
+          "B/op": {
+            "median": 20038925.0,
+            "min": 20033538.0,
+            "max": 20050109.0
+          },
+          "allocs/op": {
+            "median": 4580.0,
+            "min": 4565.0,
+            "max": 4606.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 42247389.0,
+            "min": 41745986.0,
+            "max": 42535833.0
+          },
+          "syncs/op": {
+            "median": 8.0,
+            "min": 8.0,
+            "max": 8.0
+          },
+          "B/op": {
+            "median": 97338.0,
+            "min": 96757.0,
+            "max": 97456.0
+          },
+          "allocs/op": {
+            "median": 1185.0,
+            "min": 1180.0,
+            "max": 1185.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 17260931.0,
+            "min": 15788194.0,
+            "max": 19681139.0
+          },
+          "syncs/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 6135274.0,
+            "min": 6123736.0,
+            "max": 6135653.0
+          },
+          "allocs/op": {
+            "median": 55765.0,
+            "min": 55763.0,
+            "max": 55770.0
+          }
+        }
+      }
+    },
+    "no_source_index": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 139625.0,
+            "min": 103125.0,
+            "max": 165556.0
+          },
+          "timeouts/op": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "B/op": {
+            "median": 1458.0,
+            "min": 1458.0,
+            "max": 1464.0
+          },
+          "allocs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 18891167.0,
+            "min": 18331958.0,
+            "max": 24764917.0
+          },
+          "MB/s": {
+            "median": 898.63,
+            "min": 685.49,
+            "max": 926.04
+          },
+          "B/op": {
+            "median": 95794.0,
+            "min": 95688.0,
+            "max": 96037.0
+          },
+          "allocs/op": {
+            "median": 421.0,
+            "min": 421.0,
+            "max": 423.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 42257931.0,
+            "min": 41899431.0,
+            "max": 42754430.0
+          },
+          "syncs/op": {
+            "median": 8.0,
+            "min": 8.0,
+            "max": 8.0
+          },
+          "B/op": {
+            "median": 97333.0,
+            "min": 97205.0,
+            "max": 97530.0
+          },
+          "allocs/op": {
+            "median": 1183.0,
+            "min": 1182.0,
+            "max": 1185.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 117551097.0,
+            "min": 114548500.0,
+            "max": 129432264.0
+          },
+          "syncs/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 47053898.0,
+            "min": 47041130.0,
+            "max": 47054624.0
+          },
+          "allocs/op": {
+            "median": 341451.0,
+            "min": 341445.0,
+            "max": 341460.0
+          }
+        }
+      }
+    },
+    "no_dedup": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 127000.0,
+            "min": 105792.0,
+            "max": 255806.0
+          },
+          "timeouts/op": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "B/op": {
+            "median": 1458.0,
+            "min": 1458.0,
+            "max": 1464.0
+          },
+          "allocs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 18941208.0,
+            "min": 18112778.0,
+            "max": 24255820.0
+          },
+          "MB/s": {
+            "median": 896.25,
+            "min": 699.88,
+            "max": 937.25
+          },
+          "B/op": {
+            "median": 96021.0,
+            "min": 95741.0,
+            "max": 97608.0
+          },
+          "allocs/op": {
+            "median": 422.0,
+            "min": 421.0,
+            "max": 426.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 169056917.0,
+            "min": 168169306.0,
+            "max": 169443320.0
+          },
+          "syncs/op": {
+            "median": 32.0,
+            "min": 32.0,
+            "max": 32.0
+          },
+          "B/op": {
+            "median": 144938.0,
+            "min": 144421.0,
+            "max": 146306.0
+          },
+          "allocs/op": {
+            "median": 1766.0,
+            "min": 1764.0,
+            "max": 1769.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 18983083.0,
+            "min": 16816528.0,
+            "max": 20255208.0
+          },
+          "syncs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 6154933.0,
+            "min": 6142448.0,
+            "max": 6156053.0
+          },
+          "allocs/op": {
+            "median": 55964.0,
+            "min": 55961.0,
+            "max": 55970.0
+          }
+        }
+      }
+    },
+    "serial": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 165208.0,
+            "min": 111653.0,
+            "max": 234097.0
+          },
+          "timeouts/op": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "B/op": {
+            "median": 1458.0,
+            "min": 1453.0,
+            "max": 1458.0
+          },
+          "allocs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 19180305.0,
+            "min": 18094569.0,
+            "max": 23555861.0
+          },
+          "MB/s": {
+            "median": 885.08,
+            "min": 720.68,
+            "max": 938.19
+          },
+          "B/op": {
+            "median": 95901.0,
+            "min": 95741.0,
+            "max": 96037.0
+          },
+          "allocs/op": {
+            "median": 422.0,
+            "min": 421.0,
+            "max": 423.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 168797639.0,
+            "min": 167745722.0,
+            "max": 169154389.0
+          },
+          "syncs/op": {
+            "median": 8.0,
+            "min": 8.0,
+            "max": 8.0
+          },
+          "B/op": {
+            "median": 95360.0,
+            "min": 95018.0,
+            "max": 95450.0
+          },
+          "allocs/op": {
+            "median": 1172.0,
+            "min": 1169.0,
+            "max": 1173.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 18896903.0,
+            "min": 17668653.0,
+            "max": 20594569.0
+          },
+          "syncs/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 6135722.0,
+            "min": 6105936.0,
+            "max": 6136458.0
+          },
+          "allocs/op": {
+            "median": 55769.0,
+            "min": 55767.0,
+            "max": 55773.0
+          }
+        }
+      }
+    },
+    "legacy_lock": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 51243361.0,
+            "min": 50997681.0,
+            "max": 51458514.0
+          },
+          "timeouts/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "B/op": {
+            "median": 3474.0,
+            "min": 3421.0,
+            "max": 3565.0
+          },
+          "allocs/op": {
+            "median": 34.0,
+            "min": 33.0,
+            "max": 36.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 18361708.0,
+            "min": 18062945.0,
+            "max": 24321847.0
+          },
+          "MB/s": {
+            "median": 924.54,
+            "min": 697.98,
+            "max": 939.83
+          },
+          "B/op": {
+            "median": 95848.0,
+            "min": 95741.0,
+            "max": 97661.0
+          },
+          "allocs/op": {
+            "median": 422.0,
+            "min": 421.0,
+            "max": 426.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 42266639.0,
+            "min": 42058861.0,
+            "max": 43159097.0
+          },
+          "syncs/op": {
+            "median": 8.0,
+            "min": 8.0,
+            "max": 8.0
+          },
+          "B/op": {
+            "median": 97296.0,
+            "min": 97061.0,
+            "max": 97418.0
+          },
+          "allocs/op": {
+            "median": 1183.0,
+            "min": 1181.0,
+            "max": 1184.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 16858528.0,
+            "min": 15806430.0,
+            "max": 19710528.0
+          },
+          "syncs/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 6135840.0,
+            "min": 6122000.0,
+            "max": 6137709.0
+          },
+          "allocs/op": {
+            "median": 55768.0,
+            "min": 55766.0,
+            "max": 55772.0
+          }
+        }
+      }
+    },
+    "no_history_optimizations": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 107528.0,
+            "min": 99500.0,
+            "max": 137250.0
+          },
+          "timeouts/op": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "B/op": {
+            "median": 1458.0,
+            "min": 1453.0,
+            "max": 1458.0
+          },
+          "allocs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 14555236.0,
+            "min": 13635889.0,
+            "max": 18123389.0
+          },
+          "MB/s": {
+            "median": 1166.33,
+            "min": 936.7,
+            "max": 1244.96
+          },
+          "B/op": {
+            "median": 21570298.0,
+            "min": 21567325.0,
+            "max": 21577968.0
+          },
+          "allocs/op": {
+            "median": 33238.0,
+            "min": 33228.0,
+            "max": 33255.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 42306167.0,
+            "min": 41810528.0,
+            "max": 42619708.0
+          },
+          "syncs/op": {
+            "median": 8.0,
+            "min": 8.0,
+            "max": 8.0
+          },
+          "B/op": {
+            "median": 97248.0,
+            "min": 96981.0,
+            "max": 97680.0
+          },
+          "allocs/op": {
+            "median": 1183.0,
+            "min": 1181.0,
+            "max": 1186.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 16967611.0,
+            "min": 15733917.0,
+            "max": 19675945.0
+          },
+          "syncs/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 6135733.0,
+            "min": 6135224.0,
+            "max": 6137389.0
+          },
+          "allocs/op": {
+            "median": 55768.0,
+            "min": 55766.0,
+            "max": 55770.0
+          }
+        }
+      }
+    },
+    "no_dedup_serial": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 140236.0,
+            "min": 104250.0,
+            "max": 302570.0
+          },
+          "timeouts/op": {
+            "median": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "B/op": {
+            "median": 1458.0,
+            "min": 1458.0,
+            "max": 1458.0
+          },
+          "allocs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 19110097.0,
+            "min": 18134514.0,
+            "max": 23428306.0
+          },
+          "MB/s": {
+            "median": 888.33,
+            "min": 724.6,
+            "max": 936.12
+          },
+          "B/op": {
+            "median": 95794.0,
+            "min": 95688.0,
+            "max": 96042.0
+          },
+          "allocs/op": {
+            "median": 421.0,
+            "min": 421.0,
+            "max": 423.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 673593250.0,
+            "min": 670263430.0,
+            "max": 681174139.0
+          },
+          "syncs/op": {
+            "median": 32.0,
+            "min": 32.0,
+            "max": 32.0
+          },
+          "B/op": {
+            "median": 142341.0,
+            "min": 142058.0,
+            "max": 142373.0
+          },
+          "allocs/op": {
+            "median": 1752.0,
+            "min": 1749.0,
+            "max": 1752.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 18516472.0,
+            "min": 17733097.0,
+            "max": 23639708.0
+          },
+          "syncs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 6154149.0,
+            "min": 6140938.0,
+            "max": 6155077.0
+          },
+          "allocs/op": {
+            "median": 55960.0,
+            "min": 55958.0,
+            "max": 55966.0
+          }
+        }
+      }
+    },
+    "all_off": {
+      "BenchmarkAblationExitedLock": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 51197292.0,
+            "min": 50836194.0,
+            "max": 51955403.0
+          },
+          "timeouts/op": {
+            "median": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "B/op": {
+            "median": 3448.0,
+            "min": 3013.0,
+            "max": 3602.0
+          },
+          "allocs/op": {
+            "median": 34.0,
+            "min": 31.0,
+            "max": 36.0
+          }
+        }
+      },
+      "BenchmarkAblationHistory": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 13878097.0,
+            "min": 13613750.0,
+            "max": 20174972.0
+          },
+          "MB/s": {
+            "median": 1223.23,
+            "min": 841.45,
+            "max": 1246.99
+          },
+          "B/op": {
+            "median": 21573898.0,
+            "min": 21567410.0,
+            "max": 21581205.0
+          },
+          "allocs/op": {
+            "median": 33241.0,
+            "min": 33225.0,
+            "max": 33260.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryFailed": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 674557292.0,
+            "min": 672135153.0,
+            "max": 677163208.0
+          },
+          "syncs/op": {
+            "median": 32.0,
+            "min": 32.0,
+            "max": 32.0
+          },
+          "B/op": {
+            "median": 142122.0,
+            "min": 142037.0,
+            "max": 142517.0
+          },
+          "allocs/op": {
+            "median": 1750.0,
+            "min": 1750.0,
+            "max": 1754.0
+          }
+        }
+      },
+      "BenchmarkAblationRecoveryVerified": {
+        "samples": 7,
+        "metrics": {
+          "ns/op": {
+            "median": 120540903.0,
+            "min": 116700681.0,
+            "max": 131826597.0
+          },
+          "syncs/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "verified/op": {
+            "median": 20.0,
+            "min": 20.0,
+            "max": 20.0
+          },
+          "B/op": {
+            "median": 47073434.0,
+            "min": 47072448.0,
+            "max": 47074845.0
+          },
+          "allocs/op": {
+            "median": 341644.0,
+            "min": 341631.0,
+            "max": 341654.0
+          }
+        }
+      }
+    }
+  }
+}

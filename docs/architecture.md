@@ -4,15 +4,18 @@ skillctl 使用一个 Go 进程和本地 TOML/JSON 文件。既有 Provider 继�
 
 ## 模块与状态
 
-| 模块 | 职责 |
+| 目录 / 入口 | 职责 |
 |---|---|
-| `scan.go`、`hosts.go`、`host_plugins.go` | 物理扫描、用户/项目目录、原生插件安装记录与启用状态 |
-| `inventory.go`、`catalog.go` | 来源身份、内容副本、bindings、能力、结构化诊断与共享存储目录 |
-| `package_source.go`、`source_cache.go`、`source_session.go` | 来源解析、受限归档展开、Git/制品缓存、批量来源检查 |
-| `provenance.go`、`install_history.go` | 合并权威证据，验证结构化安装记录；不按名称猜来源 |
-| `lifecycle.go`、`manifest.go` | 生成安装/使用关系计划，固定版本，协调环境与 profile |
-| `transaction.go`、`external_transactions.go`、`plugin_operations.go` | 文件事务、原 CLI 更新历史、插件整包操作及恢复 |
-| `cli_manager.go`、`inspection_commands.go`、`report.go` | 命令路由、v1 兼容输出、v2 资产与结果 envelope |
+| `main.go` | 进程入口、版本注入与中断取消；保留 `go build .` 和现有安装方式 |
+| `internal/app/` | 清单与来源归属、生命周期计划、Provider 操作、事务恢复和命令编排；对外只提供 `Run` |
+| `internal/cli/` | 参数解析、参数组合校验、命令帮助与 Agent 名称别名 |
+| `internal/gitstore/` | Git 来源缓存、缓存锁、远端同步和批量对象读取 |
+| `internal/installhistory/` | 从结构化 JSONL 记录提取安装候选；不执行命令、不登记来源 |
+| `internal/skilldoc/` | SKILL.md 的 YAML 解析、名称校验和元数据读取 |
+| `internal/archive/` | ZIP、tar.gz、单文件制品校验与展开限制 |
+| `internal/fsutil/` | 跨平台路径身份、内容摘要、复制、文件替换和内核锁 |
+
+依赖从 `main` 指向 `app`，再由 `app` 使用各职责包；职责包不反向依赖 `app`。涉及安装状态与事务的一致性规则仍集中在 `app`，避免把内部可变状态暴露给多个包。参数、文档、归档、缓存和文件操作的独立测试放在对应目录，跨模块的命令与生命周期测试放在 `internal/app/`。
 
 本机状态位于 `SKILLCTL_HOME` 或系统用户配置目录下的 `skillctl`：
 
@@ -58,6 +61,16 @@ flowchart LR
 插件通过宿主接口执行和验证，不用文件覆盖改变宿主管理权。启停支持原生逆操作；没有精确版本恢复接口的更新/移除会报告回退不支持。已安装状态或 CLI 受理本身不足以代表验证完成。
 
 检查可保存验证过的证据；预览使用只读来源状态，Git 仓库预览使用临时 bare clone，不修改安装仓库的 FETCH_HEAD 或 remote refs。只读列表和诊断不会初始化本机配置。
+
+## 检查性能与缓存锁
+
+自动来源恢复先按来源、ref 和缓存模式合并候选，再沿用最多 4 路的来源同步。一次恢复会话内，同一来源的成功结果或失败结果都会复用；20 个未知 Skill 共享一个安装记录时，只进行一次来源同步。候选仍须逐项通过内容验证，不能用缓存命中代替来源证明。
+
+恢复会话为每个来源工作区建立一次名称到 Skill 路径的索引，保留重名歧义和缺失路径诊断。索引只在本次命令内复用；每个候选仍检查名称、目录边界及实际内容。安装历史按行复用读取缓冲区，超长记录继续完整解析，不增加持久历史缓存。优化取舍与逐项消融见 [性能实验](performance.md)。
+
+Git 缓存使用非阻塞内核锁，等待时服从当前操作的取消与超时。进程退出后锁自动释放，不再依赖 30 分钟的文件过期时间。锁文件保留以维持同一个 inode；文件存在不表示仍被占用。遇到旧格式的 PID 标记，仍活动的旧进程受到保护，已退出的旧进程留下的标记会在取得锁后迁移。
+
+`check/update` 会显示安装历史恢复阶段、来源数及同步结果；同一来源失败时合并受影响的 Skill 名称。网络请求本身仍可能超时；`--timeout` 是每个来源操作的预算，不是整条命令的总时限。
 
 ## 验证边界
 

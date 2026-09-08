@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          files=$(gofmt -l *.go)
+          files=$(gofmt -l .)
           if [ -n "$files" ]; then
             printf 'Files need gofmt:\n%s\n' "$files"
             exit 1
@@ -57,11 +57,13 @@ jobs:
           }
       - name: Test
         run: go test ./... -count=1 -timeout 30s
+      - name: Compile ablation benchmarks
+        run: go test -tags=ablation ./... -run '^$'
       - name: Race detector
         if: runner.os == 'Linux'
         run: go test -race ./... -count=1 -timeout 60s
       - name: Git integration
-        run: go test -tags=integration . -run '^TestIntegration' -count=1 -timeout 90s
+        run: go test -tags=integration ./... -run '^TestIntegration' -count=1 -timeout 90s
       - name: Vet
         run: go vet ./...
 
@@ -84,7 +86,7 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@v0.8.0
           go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
       - name: Staticcheck
-        run: staticcheck -checks=all ./...
+        run: staticcheck -checks=all -tags=ablation ./...
       - name: Vulnerability scan
         run: govulncheck ./...
 

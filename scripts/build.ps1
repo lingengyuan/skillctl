@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "0.0.3"
+    [string]$Version = "0.0.4"
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,6 +30,7 @@ foreach ($target in $targets) {
     if ($LASTEXITCODE -ne 0) { throw "Build failed for $($target.OS)/$($target.Arch)" }
     Copy-Item (Join-Path $projectRoot "README.md"), (Join-Path $projectRoot "LICENSE"), (Join-Path $projectRoot "CHANGELOG.md") -Destination $stage
     Copy-Item (Join-Path $projectRoot "docs") -Destination $stage -Recurse
+    Copy-Item (Join-Path $projectRoot "benchmarks") -Destination $stage -Recurse
     if ($target.OS -eq "windows") {
         $archive = Join-Path $dist "$name.zip"
         Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -Force
