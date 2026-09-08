@@ -1,3 +1,5 @@
+//go:build integration
+
 package app
 
 import (
@@ -15,7 +17,7 @@ import (
 
 // This sanitized workload preserves the observed name/installation cardinality
 // and ownership mix without retaining any user history or private source URLs.
-func TestInspectionContract120Names122Installations(t *testing.T) {
+func TestIntegrationInspectionContract120Names122Installations(t *testing.T) {
 	home := setTestHome(t)
 	t.Setenv("SKILLCTL_HOME", filepath.Join(home, "state"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
