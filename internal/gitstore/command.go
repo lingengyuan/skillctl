@@ -11,10 +11,19 @@ import (
 
 // Output runs a local Git command and returns its trimmed combined output.
 func Output(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	return OutputContext(context.Background(), dir, args...)
+}
+
+// OutputContext runs a local Git operation with cancellation and bounded pipe cleanup.
+func OutputContext(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd.WaitDelay = time.Second
 	output, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	if err != nil {
-		return "", fmt.Errorf("%s", strings.TrimSpace(string(output)))
+		return "", fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(output)))
 	}
 	return strings.TrimSpace(string(output)), nil
 }

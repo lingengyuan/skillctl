@@ -63,5 +63,10 @@ func Run(ctx context.Context, args []string, version string, stdout, stderr io.W
 		}
 		return 2
 	}
+	if opt.CommandTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opt.CommandTimeout)
+		defer cancel()
+	}
 	return runManager(ctx, command, opt, stdout, stderr)
 }

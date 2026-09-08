@@ -3,11 +3,13 @@ package gitstore
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Object contains a Git object identity, type and unmodified payload.
@@ -27,9 +29,14 @@ type Reader struct {
 
 // NewReader starts a batch Git object reader for a repository.
 func NewReader(cache string) (*Reader, error) {
+	return NewReaderContext(context.Background(), cache)
+}
+
+func NewReaderContext(ctx context.Context, cache string) (*Reader, error) {
 	reader := &Reader{}
-	reader.cmd = exec.Command("git", "-C", cache, "cat-file", "--batch")
+	reader.cmd = exec.CommandContext(ctx, "git", "-C", cache, "cat-file", "--batch")
 	reader.cmd.Env = NonInteractiveEnv()
+	reader.cmd.WaitDelay = time.Second
 	stdin, err := reader.cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("open git object input: %w", err)

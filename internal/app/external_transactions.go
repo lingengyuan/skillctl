@@ -153,7 +153,7 @@ func recoverExternal(r *operationRecord) error {
 	return fmt.Errorf("external operation %s was interrupted; inspect before/after evidence in %s and use rollback %s to restore a recorded after state", r.ID, filepath.Clean(r.directory), r.ID)
 }
 
-func trackedUpdateTransaction(item skill, entry *trackedEntry, state *trackedState, source, digest string) error {
+func trackedUpdateTransaction(item skill, entry *trackedEntry, state *trackedState, source, digest string, sessions ...*sourceSession) error {
 	content, err := mutation(item.Path, "directory")
 	if err != nil {
 		return err
@@ -219,6 +219,9 @@ func trackedUpdateTransaction(item skill, entry *trackedEntry, state *trackedSta
 		}
 	}
 	operation, err := prepareOperation("update tracked copy", changes, affected)
+	if operation != nil && len(sessions) > 0 {
+		sessions[0].operations = append(sessions[0].operations, operation)
+	}
 	if err == nil {
 		err = operation.apply()
 	}
@@ -229,7 +232,7 @@ func trackedUpdateTransaction(item skill, entry *trackedEntry, state *trackedSta
 	return nil
 }
 
-func beginGitOperation(root string, items []skill) (*operationRecord, error) {
+func beginGitOperation(root string, items []skill, targets ...string) (*operationRecord, error) {
 	paths := []string{root}
 	gitDir, err := gitstore.Output(root, "rev-parse", "--absolute-git-dir")
 	if err != nil {
@@ -253,7 +256,11 @@ func beginGitOperation(root string, items []skill) (*operationRecord, error) {
 			affected = appendUniqueString(affected, binding.Host+"/"+binding.Scope+": "+binding.Path)
 		}
 	}
-	files, err := gitstore.Output(root, "diff", "--name-only", "--no-ext-diff", "HEAD", "@{upstream}", "--")
+	target := "@{upstream}"
+	if len(targets) > 0 {
+		target = targets[0]
+	}
+	files, err := gitstore.Output(root, "diff", "--name-only", "--no-ext-diff", "HEAD", target, "--")
 	if err != nil {
 		return nil, err
 	}

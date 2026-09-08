@@ -23,32 +23,32 @@ func previewRepository(ctx context.Context, timeout time.Duration, repo *reposit
 		}
 		return true
 	}
-	branch, err := gitstore.Output(repo.Root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	branch, err := gitstore.OutputContext(ctx, repo.Root, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		printSkills(stdout, repo.Skills, "skipped (detached HEAD)", "blocked", "git_state_blocks_update", false)
 		return false
 	}
-	remote, err := gitstore.Output(repo.Root, "config", "--get", "branch."+branch+".remote")
+	remote, err := gitstore.OutputContext(ctx, repo.Root, "config", "--get", "branch."+branch+".remote")
 	if err != nil || remote == "" || remote == "." {
 		printSkills(stdout, repo.Skills, "skipped (no upstream)", "blocked", "git_state_blocks_update", false)
 		return false
 	}
-	merge, err := gitstore.Output(repo.Root, "config", "--get", "branch."+branch+".merge")
+	merge, err := gitstore.OutputContext(ctx, repo.Root, "config", "--get", "branch."+branch+".merge")
 	if err != nil {
 		return fail(err)
 	}
-	source, err := gitstore.Output(repo.Root, "remote", "get-url", remote)
+	source, err := gitstore.OutputContext(ctx, repo.Root, "remote", "get-url", remote)
 	if err != nil {
 		return fail(err)
 	}
 	if err := validateSourceURL(source); err != nil {
 		return fail(err)
 	}
-	head, err := gitstore.Output(repo.Root, "rev-parse", "HEAD")
+	head, err := gitstore.OutputContext(ctx, repo.Root, "rev-parse", "HEAD")
 	if err != nil {
 		return fail(err)
 	}
-	dirty, err := gitstore.Output(repo.Root, "status", "--porcelain")
+	dirty, err := gitstore.OutputContext(ctx, repo.Root, "status", "--porcelain")
 	if err != nil {
 		return fail(err)
 	}
@@ -61,10 +61,20 @@ func previewRepository(ctx context.Context, timeout time.Duration, repo *reposit
 	if _, err := gitstore.NetworkOutputWithTimeout(ctx, timeout, temporary, "clone", "--bare", "--no-hardlinks", "--", repo.Root, bare); err != nil {
 		return fail(err)
 	}
-	if _, err := gitstore.NetworkOutputWithTimeout(ctx, timeout, bare, "fetch", "--no-tags", "--no-recurse-submodules", "--", source, merge); err != nil {
+	session, cleanup := commandSourceSession(ctx, timeout, stderr)
+	defer cleanup()
+	cache, err := session.source(source, merge)
+	if err != nil {
 		return fail(err)
 	}
-	counts, err := gitstore.Output(bare, "rev-list", "--left-right", "--count", head+"...FETCH_HEAD")
+	revision, err := session.revision(cache)
+	if err != nil {
+		return fail(err)
+	}
+	if _, err := gitstore.OutputContext(ctx, bare, "fetch", "--no-tags", "--no-recurse-submodules", "--", cache, revision); err != nil {
+		return fail(err)
+	}
+	counts, err := gitstore.OutputContext(ctx, bare, "rev-list", "--left-right", "--count", head+"...FETCH_HEAD")
 	if err != nil {
 		return fail(err)
 	}

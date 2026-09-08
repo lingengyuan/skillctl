@@ -16,7 +16,6 @@ import (
 
 	"github.com/lingengyuan/skillctl/internal/archive"
 	"github.com/lingengyuan/skillctl/internal/fsutil"
-	"github.com/lingengyuan/skillctl/internal/gitstore"
 	"github.com/lingengyuan/skillctl/internal/installhistory"
 )
 
@@ -136,25 +135,7 @@ func preparePackages(ctx context.Context, source sourceSpec, names []string, off
 	root, revision := source.URL, ""
 	switch source.Kind {
 	case "git":
-		cache, err := gitstore.CachePath("worktree", source.URL, source.Ref)
-		if err != nil {
-			return nil, cleanup, err
-		}
-		if offline {
-			if !gitstore.ValidWorktree(cache) {
-				return nil, cleanup, fmt.Errorf("offline: Git source is not cached")
-			}
-			root = cache
-		} else {
-			root, err = gitstore.SyncWorktree(ctx, source.URL, source.Ref)
-			if err != nil {
-				return nil, cleanup, err
-			}
-		}
-		revision, err = gitstore.Output(root, "rev-parse", "HEAD")
-		if err != nil {
-			return nil, cleanup, err
-		}
+		return prepareGitPackages(ctx, source, names, offline)
 	case "archive":
 		body, err := readArtifact(ctx, source.URL, offline)
 		if err != nil {
@@ -188,7 +169,7 @@ func preparePackages(ctx context.Context, source sourceSpec, names []string, off
 		}
 	}
 	var diagnostics bytes.Buffer
-	items, failed := scan([]scanRoot{{Path: discoveryRoot, Host: "source", Scope: "source", Required: true}}, &diagnostics)
+	items, failed := scanContext(ctx, []scanRoot{{Path: discoveryRoot, Host: "source", Scope: "source", Required: true}}, &diagnostics)
 	if failed {
 		cleanup()
 		return nil, func() {}, fmt.Errorf("source contains invalid skills: %s", oneLine(diagnostics.String()))
@@ -212,7 +193,7 @@ func preparePackages(ctx context.Context, source sourceSpec, names []string, off
 			cleanup()
 			return nil, func() {}, err
 		}
-		digest, err := fsutil.HashDirectory(item.Path)
+		digest, err := fsutil.HashDirectoryContext(ctx, item.Path)
 		if err != nil {
 			cleanup()
 			return nil, func() {}, err

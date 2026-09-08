@@ -14,7 +14,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/lingengyuan/skillctl/internal/fsutil"
@@ -126,7 +125,7 @@ func TestCheckDeduplicatesSameSkillAcrossRoots(t *testing.T) {
 	if strings.Count(stdout.String(), "shared-skill [local-authoring, user]") != 1 {
 		t.Fatalf("text output still contains duplicate skill: %s", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "Found 1 unique skills (2 installations") || !strings.Contains(stderr.String(), "Checking 1 unique skills (2 installations)") {
+	if !strings.Contains(stderr.String(), "Found 1 names (2 installations)") {
 		t.Fatalf("progress did not use deduplicated count: %s", stderr.String())
 	}
 
@@ -411,10 +410,10 @@ func TestCheckReportsProgressAndHonorsTimeout(t *testing.T) {
 }
 
 func TestUpdateAppliesTimeoutPerProviderOperation(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
+	func(t *testing.T) {
 		home := setTestHome(t)
 		root := filepath.Join(home, "skills")
-		sourceRoot := filepath.Join(home, "source")
+		sourceRoot := newTestSourceRepository(t)
 		installed := map[string]string{}
 		remoteHashes := map[string]string{}
 		lock := vercelLock{Version: 3, Skills: map[string]vercelLockEntry{}}
@@ -439,6 +438,7 @@ func TestUpdateAppliesTimeoutPerProviderOperation(t *testing.T) {
 			}
 		}
 
+		commitTestSource(t, sourceRoot, "remote skills")
 		lockPath := filepath.Join(home, ".agents", ".skill-lock.json")
 		if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 			t.Fatal(err)
@@ -460,9 +460,9 @@ func TestUpdateAppliesTimeoutPerProviderOperation(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		originalSync := syncWorktreeSourceForSession
-		t.Cleanup(func() { syncWorktreeSourceForSession = originalSync })
-		syncWorktreeSourceForSession = func(context.Context, string, string) (string, error) {
+		originalSync := syncSourceForSession
+		t.Cleanup(func() { syncSourceForSession = originalSync })
+		syncSourceForSession = func(context.Context, string, string) (string, error) {
 			return sourceRoot, nil
 		}
 		originalUpdater := runVercelUpdater
@@ -507,11 +507,11 @@ func TestUpdateAppliesTimeoutPerProviderOperation(t *testing.T) {
 				t.Fatalf("%s was not updated", name)
 			}
 		}
-	})
+	}(t)
 }
 
 // Preparation and progress output must not consume the provider process budget.
-// Virtual time makes the timing boundary deterministic even on loaded CI hosts.
+// Each operation must receive its full budget after preparation.
 type delayedUpdateProgress struct{ bytes.Buffer }
 
 func (w *delayedUpdateProgress) Write(data []byte) (int, error) {
@@ -674,12 +674,13 @@ func newTrackedFixture(t *testing.T) (skill, *trackedState, *sourceSession, stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	sourceRoot := filepath.Join(dir, "source")
+	sourceRoot := newTestSourceRepository(t)
 	remoteSkill := filepath.Join(sourceRoot, "demo")
 	writeTestSkill(t, remoteSkill, "demo", "new")
 	if err := os.WriteFile(filepath.Join(remoteSkill, "new.txt"), []byte("new"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	commitTestSource(t, sourceRoot, "remote skill")
 	item := skill{Name: "demo", Path: installed}
 	state := &trackedState{
 		Version: 1,
@@ -693,6 +694,7 @@ func newTrackedFixture(t *testing.T) (skill, *trackedState, *sourceSession, stri
 	}
 	session := newSourceSession(context.Background(), defaultNetworkTimeout, io.Discard)
 	session.caches[sourceKey("fixture", "")] = sourceRoot
+	t.Cleanup(session.close)
 	return item, state, session, installed
 }
 

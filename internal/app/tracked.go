@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/lingengyuan/skillctl/internal/fsutil"
 	"github.com/lingengyuan/skillctl/internal/gitstore"
@@ -17,11 +19,14 @@ import (
 )
 
 type trackedEntry struct {
-	Path          string `json:"path"`
-	Source        string `json:"source"`
-	Ref           string `json:"ref,omitempty"`
-	SkillPath     string `json:"skillPath"`
-	InstalledHash string `json:"installedHash"`
+	Path             string    `json:"path"`
+	Source           string    `json:"source"`
+	Ref              string    `json:"ref,omitempty"`
+	SkillPath        string    `json:"skillPath"`
+	InstalledHash    string    `json:"installedHash"`
+	VerifiedRevision string    `json:"verifiedRevision,omitempty"`
+	EvidenceID       string    `json:"evidenceId,omitempty"`
+	EvidenceWhen     time.Time `json:"evidenceWhen,omitzero"`
 }
 
 type providerBaseline struct {
@@ -171,86 +176,98 @@ func verifyCopiedSkill(ctx context.Context, item skill, source, ref, skillPath s
 	if source == "" {
 		return trackedEntry{}, fmt.Errorf("track requires --source")
 	}
+	session, cleanup := commandSourceSession(ctx, defaultNetworkTimeout, io.Discard)
+	defer cleanup()
 	source = gitstore.NormalizeSource(source)
-	cache, err := gitstore.SyncWorktree(ctx, source, ref)
+	cache, err := session.source(source, ref)
 	if err != nil {
 		return trackedEntry{}, err
 	}
-	return verifyCopiedSkillInCache(item, source, ref, skillPath, cache)
+	return verifyCopiedSkillInSession(ctx, session, item, source, ref, skillPath, cache)
 }
 
-func verifyCopiedSkillInCache(item skill, source, ref, skillPath, cache string) (trackedEntry, error) {
+func verifyCopiedSkillInSession(ctx context.Context, session *sourceSession, item skill, source, ref, skillPath, cache string) (trackedEntry, error) {
 	if skillPath == "" {
 		var err error
-		skillPath, err = discoverSourceSkill(cache, item.Name)
+		skillPath, err = session.sourceIndex(cache).find(item.Name)
 		if err != nil {
 			return trackedEntry{}, err
 		}
 	}
-	remoteSkill, err := sourceSkillPath(cache, skillPath)
+	revision, err := session.revision(cache)
 	if err != nil {
 		return trackedEntry{}, err
 	}
-	remoteName, readErr := skilldoc.ReadName(filepath.Join(remoteSkill, "SKILL.md"))
-	if readErr != nil || remoteName != item.Name {
+	tree, err := sourceTreeSpec(revision, skillPath)
+	if err != nil {
+		return trackedEntry{}, err
+	}
+	document, err := session.gitObject(cache, revision+":"+path.Join(skillPath, "SKILL.md"))
+	if err != nil {
+		return trackedEntry{}, err
+	}
+	parsed, err := skilldoc.Parse(document.Data)
+	if err != nil || skilldoc.Validate(parsed) != nil || parsed.Name != item.Name {
 		return trackedEntry{}, fmt.Errorf("source path does not contain skill %q", item.Name)
 	}
-	installedHash, err := fsutil.HashDirectory(item.Path)
+	installedHash, err := fsutil.HashDirectoryContext(ctx, item.Path)
 	if err != nil {
 		return trackedEntry{}, fmt.Errorf("hash installed skill: %w", err)
 	}
-	remoteHash, err := fsutil.HashDirectory(remoteSkill)
+	remoteHash, err := hashGitTree(session, cache, tree)
 	if err != nil {
 		return trackedEntry{}, fmt.Errorf("hash source skill: %w", err)
 	}
 	if installedHash != remoteHash {
-		matched, err := matchesSourceHistory(cache, skillPath, installedHash)
+		revision, err = matchingSourceRevision(ctx, session, cache, revision, skillPath, installedHash)
 		if err != nil {
 			return trackedEntry{}, err
 		}
-		if !matched {
+		if revision == "" {
 			return trackedEntry{}, fmt.Errorf("local content does not match the source or its history")
 		}
 	}
-	return trackedEntry{
-		Path:          filepath.Clean(item.Path),
-		Source:        source,
-		Ref:           ref,
-		SkillPath:     filepath.ToSlash(filepath.Clean(skillPath)),
-		InstalledHash: installedHash,
-	}, nil
+	return trackedEntry{Path: filepath.Clean(item.Path), Source: source, Ref: ref, SkillPath: filepath.ToSlash(filepath.Clean(skillPath)), InstalledHash: installedHash, VerifiedRevision: revision}, nil
 }
 
 func matchesSourceHistory(cache, skillPath, installedHash string) (bool, error) {
-	latest, err := gitstore.Output(cache, "rev-parse", "HEAD")
+	session := newSourceSession(context.Background(), defaultNetworkTimeout, io.Discard)
+	defer session.close()
+	revision, err := session.revision(cache)
 	if err != nil {
-		return false, fmt.Errorf("read source HEAD: %w", err)
+		return false, err
 	}
-	defer func() { _, _ = gitstore.Output(cache, "checkout", "--force", "--detach", latest) }()
-	commits, err := gitstore.Output(cache, "log", "--format=%H", "--", filepath.ToSlash(skillPath))
+	matched, err := matchingSourceRevision(session.ctx, session, cache, revision, skillPath, installedHash)
+	return matched != "", err
+}
+
+func matchingSourceRevision(ctx context.Context, session *sourceSession, cache, latest, skillPath, installedHash string) (string, error) {
+	commits, err := gitstore.OutputContext(ctx, cache, "log", "--format=%H", latest, "--", filepath.ToSlash(skillPath))
 	if err != nil {
-		return false, fmt.Errorf("read source history: %w", err)
+		return "", fmt.Errorf("read source history: %w", err)
 	}
 	for _, commit := range strings.Fields(commits) {
-		if commit == latest {
-			continue
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("history verification incomplete: %w", err)
 		}
-		if _, err := gitstore.Output(cache, "checkout", "--force", "--detach", commit); err != nil {
-			return false, fmt.Errorf("inspect source history: %w", err)
-		}
-		candidate := filepath.Join(cache, filepath.FromSlash(skillPath))
-		if _, err := os.Stat(filepath.Join(candidate, "SKILL.md")); err != nil {
-			continue
-		}
-		hash, err := fsutil.HashDirectory(candidate)
+		spec, err := sourceTreeSpec(commit, skillPath)
 		if err != nil {
-			return false, fmt.Errorf("hash source history: %w", err)
+			return "", err
+		}
+		// A directory may be absent at a deletion commit. The remaining history
+		// is still meaningful; no shared checkout or restoration is necessary.
+		if _, err := session.gitObject(cache, spec); err != nil {
+			continue
+		}
+		hash, err := hashGitTree(session, cache, spec)
+		if err != nil {
+			return "", fmt.Errorf("hash source history: %w", err)
 		}
 		if hash == installedHash {
-			return true, nil
+			return commit, nil
 		}
 	}
-	return false, nil
+	return "", nil
 }
 
 func processTracked(action string, items []skill, state *trackedState, session *sourceSession, stdout, stderr io.Writer) bool {
@@ -267,25 +284,36 @@ func processTracked(action string, items []skill, state *trackedState, session *
 			failed = true
 			continue
 		}
-		remoteSkill, err := sourceSkillPath(cache, entry.SkillPath)
+		tree, err := sourceTreeSpec("HEAD", entry.SkillPath)
 		if err != nil {
-			reportFailure(stderr, item, oneLine(err.Error()))
+			reportFailure(stderr, item, err.Error())
 			failed = true
 			continue
 		}
-		remoteName, readErr := skilldoc.ReadName(filepath.Join(remoteSkill, "SKILL.md"))
-		if readErr != nil || remoteName != item.Name {
+		document, err := session.gitObject(cache, "HEAD:"+path.Join(entry.SkillPath, "SKILL.md"))
+		if err != nil {
+			reportFailure(stderr, item, err.Error())
+			failed = true
+			continue
+		}
+		parsed, err := skilldoc.Parse(document.Data)
+		if err != nil || skilldoc.Validate(parsed) != nil || parsed.Name != item.Name {
 			reportFailure(stderr, item, fmt.Sprintf("source path does not contain skill %q", item.Name))
 			failed = true
 			continue
 		}
-		localHash, err := fsutil.HashDirectory(item.Path)
+		var localHash string
+		if action == "check" && session.observation != nil {
+			localHash, err = session.observation.hash(item.Path)
+		} else {
+			localHash, err = fsutil.HashDirectoryContext(session.ctx, item.Path)
+		}
 		if err != nil {
 			reportFailure(stderr, item, "hash local skill: "+oneLine(err.Error()))
 			failed = true
 			continue
 		}
-		remoteHash, err := fsutil.HashDirectory(remoteSkill)
+		remoteHash, err := hashGitTree(session, cache, tree)
 		if err != nil {
 			reportFailure(stderr, item, "hash remote skill: "+oneLine(err.Error()))
 			failed = true
@@ -293,9 +321,9 @@ func processTracked(action string, items []skill, state *trackedState, session *
 		}
 		if localHash != entry.InstalledHash {
 			if remoteHash != entry.InstalledHash {
-				printSkills(stdout, []skill{item}, "update available, skipped (local files were modified)", "modified", "local_changes", true)
+				printSkills(stdout, []skill{item}, vercelStatus(action, true, "modified"), "modified", "local_changes", true)
 			} else {
-				printSkills(stdout, []skill{item}, "skipped (local files were modified)", "modified", "local_changes", false)
+				printSkills(stdout, []skill{item}, vercelStatus(action, false, "modified"), "modified", "local_changes", false)
 			}
 			continue
 		}
@@ -308,7 +336,13 @@ func processTracked(action string, items []skill, state *trackedState, session *
 			continue
 		}
 
-		if err := trackedUpdateTransaction(item, entry, state, remoteSkill, remoteHash); err != nil {
+		remoteSkill, err := session.materializeTree(cache, tree)
+		if err != nil {
+			reportFailure(stderr, item, err.Error())
+			failed = true
+			continue
+		}
+		if err := trackedUpdateTransaction(item, entry, state, remoteSkill, remoteHash, session); err != nil {
 			reportFailure(stderr, item, "save source state/update content: "+oneLine(err.Error()))
 			failed = true
 			continue
@@ -319,72 +353,9 @@ func processTracked(action string, items []skill, state *trackedState, session *
 	return failed
 }
 
-func sourceSkillPath(cache, skillPath string) (string, error) {
-	remoteSkill := filepath.Join(cache, filepath.FromSlash(skillPath))
-	if !fsutil.Within(cache, remoteSkill) {
-		return "", fmt.Errorf("skill path escapes the source repository")
-	}
-	realCache, err := filepath.EvalSymlinks(cache)
-	if err != nil {
-		return "", fmt.Errorf("resolve source cache: %w", err)
-	}
-	realSkill, err := filepath.EvalSymlinks(remoteSkill)
-	if err != nil {
-		return "", fmt.Errorf("resolve source skill path: %w", err)
-	}
-	if !fsutil.Within(realCache, realSkill) {
-		return "", fmt.Errorf("source skill path resolves outside the repository")
-	}
-	remoteSkill = realSkill
-	if _, err := os.Stat(filepath.Join(remoteSkill, "SKILL.md")); err != nil {
-		return "", fmt.Errorf("source skill path: %w", err)
-	}
-	return remoteSkill, nil
-}
-
-func discoverSourceSkill(cache, name string) (string, error) {
-	return scanSourceSkills(cache).find(name)
-}
-
 type sourceSkillIndex struct {
 	paths map[string][]string
 	err   error
-}
-
-func scanSourceSkills(cache string) sourceSkillIndex {
-	index := sourceSkillIndex{paths: map[string][]string{}}
-	err := filepath.WalkDir(cache, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, relErr := filepath.Rel(cache, path)
-		if relErr != nil {
-			return relErr
-		}
-		if rel != "." && fsutil.IgnoreContent(rel) {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() || entry.Name() != "SKILL.md" {
-			return nil
-		}
-		dir := filepath.Dir(path)
-		found, readErr := skilldoc.ReadName(path)
-		if readErr == nil {
-			rel, err := filepath.Rel(cache, dir)
-			if err != nil {
-				return err
-			}
-			index.paths[found] = append(index.paths[found], filepath.ToSlash(rel))
-		}
-		return nil
-	})
-	if err != nil {
-		index.err = fmt.Errorf("scan source: %w", err)
-	}
-	return index
 }
 
 func (index sourceSkillIndex) find(name string) (string, error) {

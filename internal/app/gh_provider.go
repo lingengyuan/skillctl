@@ -37,7 +37,13 @@ var githubRepository = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
 func readGHSkillClaim(item skill) ghSkillClaimResult {
 	filePath := filepath.Join(item.Path, "SKILL.md")
-	document, err := skilldoc.Read(filePath)
+	var document skilldoc.Document
+	var err error
+	if item.Document != nil {
+		document = *item.Document
+	} else {
+		document, err = skilldoc.Read(filePath)
+	}
 	if err != nil {
 		if errors.Is(err, skilldoc.ErrMissingFrontMatter) {
 			return ghSkillClaimResult{}
@@ -245,6 +251,7 @@ func updateGHSkillProvider(ctx context.Context, session *sourceSession, item ski
 	if err != nil {
 		return ghSkillClaim{}, err
 	}
+	recordContextOperation(ctx, operation)
 	result, err := updateGHSkillProviderNative(ctx, session, item, claim, progress)
 	if finishErr := operation.finishExternal(err); finishErr != nil {
 		return ghSkillClaim{}, finishErr

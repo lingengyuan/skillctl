@@ -18,14 +18,15 @@ var commands = []string{"list", "show", "check", "diff", "doctor", "search", "in
 func knownCommand(command string) bool { return slices.Contains(commands, command) }
 
 type commandResult struct {
-	SchemaVersion int               `json:"schemaVersion"`
-	Command       string            `json:"command"`
-	Items         []skillAsset      `json:"items"`
-	Diagnostics   []diagnostic      `json:"diagnostics"`
-	Plan          *lifecyclePlan    `json:"plan,omitempty"`
-	Operation     *operationRecord  `json:"operation,omitempty"`
-	Operations    []operationRecord `json:"operations,omitempty"`
-	Result        any               `json:"result,omitempty"`
+	Summary       *inspectionSummary `json:"summary,omitempty"`
+	SchemaVersion int                `json:"schemaVersion"`
+	Command       string             `json:"command"`
+	Items         []skillAsset       `json:"items"`
+	Diagnostics   []diagnostic       `json:"diagnostics"`
+	Plan          *lifecyclePlan     `json:"plan,omitempty"`
+	Operation     *operationRecord   `json:"operation,omitempty"`
+	Operations    []operationRecord  `json:"operations,omitempty"`
+	Result        any                `json:"result,omitempty"`
 }
 
 func writeJSON(w io.Writer, value any) error { return json.MarshalWrite(w, value) }
@@ -35,7 +36,7 @@ func commandWrites(command string, opt options) bool {
 		return false
 	}
 	switch command {
-	case "check", "track":
+	case "track":
 		return !opt.Offline
 	case "doctor":
 		return opt.Fix
@@ -156,7 +157,13 @@ func runManager(ctx context.Context, command string, opt options, stdout, stderr
 		scanOpt.Hosts = nil
 		scanOpt.Scopes = nil
 	}
-	view, err := loadInventory(ctx, scanOpt, (command == "check" || command == "update") && !opt.Offline, persist)
+	var view *inventoryView
+	var err error
+	if command == "check" {
+		view, err = loadCheckInventory(ctx, scanOpt)
+	} else {
+		view, err = loadInventory(ctx, scanOpt, command == "update" && !opt.Offline, persist)
+	}
 	if err != nil {
 		fail(err)
 		return 2
@@ -199,6 +206,7 @@ func runManager(ctx context.Context, command string, opt options, stdout, stderr
 	if err != nil {
 		return fail(err)
 	}
+	view.scanFailed = view.selectedFailed(selected)
 	result := commandResult{Command: command, Items: selected, Diagnostics: view.Diagnostics}
 	if command == "list" {
 		if opt.JSONVersion == 2 {
@@ -241,7 +249,13 @@ func runManager(ctx context.Context, command string, opt options, stdout, stderr
 			if opt.JSON {
 				writer = io.Discard
 			}
-			failed := trackFromInstallHistory(ctx, view.timeout, skills, view.state, view.manifests, view.managed, len(opt.Names) > 0, writer, &diagnostics) || view.scanFailed
+			recoveryTimeout := view.timeout
+			if opt.RecoveryTimeout > 0 {
+				recoveryTimeout = opt.RecoveryTimeout
+			}
+			recoveryCtx, cancel := context.WithTimeout(ctx, recoveryTimeout)
+			defer cancel()
+			failed := trackFromInstallHistory(recoveryCtx, view.timeout, skills, view.state, view.manifests, view.managed, len(opt.Names) > 0, writer, &diagnostics) || view.scanFailed
 			if opt.JSON {
 				result.Result = map[string]bool{"dryRun": opt.DryRun}
 				if diagnostics.Len() > 0 {

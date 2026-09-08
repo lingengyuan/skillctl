@@ -13,7 +13,7 @@ import (
 	"github.com/lingengyuan/skillctl/internal/installhistory"
 )
 
-func TestHistoryRecoverySynchronizesSharedSourceOnce(t *testing.T) {
+func TestHistoryRecoveryDoesNotFetchUnrelatedWildcard(t *testing.T) {
 	requireTestGit(t)
 	home := setTestHome(t)
 	source := newTestSourceRepository(t)
@@ -23,7 +23,7 @@ func TestHistoryRecoverySynchronizesSharedSourceOnce(t *testing.T) {
 	if err := os.MkdirAll(history, 0700); err != nil {
 		t.Fatal(err)
 	}
-	// A wildcard installer record is considered for every unknown skill.
+	// A repository-only record is not evidence for these unknown installations.
 	command := fmt.Sprintf("npx skills add '%s' -g -y", filepath.ToSlash(source))
 	line := fmt.Sprintf(`{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":%q}}`+"\n", fmt.Sprintf(`{"cmd":%q}`, command))
 	if err := os.WriteFile(filepath.Join(history, "install.jsonl"), []byte(line), 0600); err != nil {
@@ -36,26 +36,26 @@ func TestHistoryRecoverySynchronizesSharedSourceOnce(t *testing.T) {
 		writeTestSkill(t, path, name, "local")
 		items = append(items, skill{Name: name, Path: path})
 	}
-	previous := syncWorktreeSourceForSession
-	t.Cleanup(func() { syncWorktreeSourceForSession = previous })
+	previous := syncSourceForSession
+	t.Cleanup(func() { syncSourceForSession = previous })
 	calls := 0
-	syncWorktreeSourceForSession = func(context.Context, string, string) (string, error) {
+	syncSourceForSession = func(context.Context, string, string) (string, error) {
 		calls++
 		return "", context.DeadlineExceeded
 	}
 	state := &trackedState{Version: 1, readOnly: true}
 	var diagnostics strings.Builder
-	if !trackFromInstallHistory(t.Context(), time.Second, items, state, nil, nil, false, io.Discard, &diagnostics) {
-		t.Fatal("source failure was not reported")
+	if trackFromInstallHistory(t.Context(), time.Second, items, state, nil, nil, false, io.Discard, &diagnostics) {
+		t.Fatal("unrelated evidence failed the check")
 	}
-	if calls != 1 {
-		t.Fatalf("shared failed source synchronized %d times, want 1", calls)
+	if calls != 0 {
+		t.Fatalf("unrelated source synchronized %d times, want 0", calls)
 	}
 	if len(state.Skills) != 0 {
 		t.Fatal("failed evidence was registered")
 	}
-	if strings.Count(diagnostics.String(), "verification failed") != 1 {
-		t.Fatalf("shared failure was not grouped: %s", &diagnostics)
+	if diagnostics.Len() != 0 {
+		t.Fatalf("unrelated verification reported: %s", &diagnostics)
 	}
 }
 
@@ -75,15 +75,15 @@ func TestRecoveryIndexStillVerifiesEverySkill(t *testing.T) {
 		items = append(items, skill{Name: name, Path: path})
 	}
 	commitTestSource(t, source, "initial")
-	previous := syncWorktreeSourceForSession
-	t.Cleanup(func() { syncWorktreeSourceForSession = previous })
+	previous := syncSourceForSession
+	t.Cleanup(func() { syncSourceForSession = previous })
 	calls := 0
-	syncWorktreeSourceForSession = func(context.Context, string, string) (string, error) {
+	syncSourceForSession = func(context.Context, string, string) (string, error) {
 		calls++
 		return source, nil
 	}
 	state := &trackedState{Version: 1, readOnly: true}
-	candidates := map[string][]installhistory.Candidate{"": {{Source: source}}}
+	candidates := map[string][]installhistory.Candidate{"": {{Source: source, Outcome: "succeeded", Destination: filepath.Join(home, "installed")}}}
 	var diagnostics strings.Builder
 	if !recoverInstallCandidates(t.Context(), time.Second, items, state, candidates, false, io.Discard, &diagnostics) {
 		t.Fatal("modified content was accepted")
@@ -100,11 +100,14 @@ func TestRecoveryIndexStillVerifiesEverySkill(t *testing.T) {
 }
 
 func TestSourceIndexPreservesAmbiguityAndIgnoredDirectories(t *testing.T) {
-	root := t.TempDir()
+	root := newTestSourceRepository(t)
 	for path, name := range map[string]string{"first": "duplicate", "second": "duplicate", "only": "unique", ".git/ignored": "unique"} {
 		writeTestSkill(t, filepath.Join(root, path), name, "content")
 	}
-	index := scanSourceSkills(root)
+	commitTestSource(t, root, "source index fixture")
+	session := newSourceSession(t.Context(), time.Second, io.Discard)
+	defer session.close()
+	index := session.sourceIndex(root)
 	if _, err := index.find("duplicate"); err == nil || !strings.Contains(err.Error(), "multiple") {
 		t.Fatalf("ambiguity was lost: %v", err)
 	}

@@ -3,33 +3,41 @@ package installhistory
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const githubInstaller = "install-skill-from-github.py"
 
-var commandProperty = regexp.MustCompile(`(?:\b(?:cmd|command)|"(?:cmd|command)")\s*:\s*("(?:\\.|[^"\\])*")`)
-
 // Candidate is unverified installer evidence; callers must verify content before registering a source.
 type Candidate struct {
-	Name      string
-	Source    string
-	Ref       string
-	SkillPath string
-	When      time.Time
+	Name        string
+	Source      string
+	Ref         string
+	SkillPath   string
+	When        time.Time
+	EvidenceID  string
+	Outcome     string
+	Destination string
+	Directory   string
+	Hosts       []string
+	Global      bool
 }
 
 type historyRecord struct {
-	Type    string `json:"type"`
-	Payload struct {
+	Timestamp time.Time `json:"timestamp"`
+	Type      string    `json:"type"`
+	Payload   struct {
+		CallID    string          `json:"call_id"`
+		Output    json.RawMessage `json:"output"`
 		Type      string          `json:"type"`
 		Name      string          `json:"name"`
 		Arguments string          `json:"arguments"`
@@ -37,9 +45,13 @@ type historyRecord struct {
 	} `json:"payload"`
 	Message struct {
 		Content []struct {
-			Type  string `json:"type"`
-			Name  string `json:"name"`
-			Input struct {
+			ID        string          `json:"id"`
+			ToolUseID string          `json:"tool_use_id"`
+			IsError   bool            `json:"is_error"`
+			Content   json.RawMessage `json:"content"`
+			Type      string          `json:"type"`
+			Name      string          `json:"name"`
+			Input     struct {
 				Command string `json:"command"`
 			} `json:"input"`
 		} `json:"content"`
@@ -48,21 +60,24 @@ type historyRecord struct {
 
 // ReadRoots collects and deduplicates structured installer records from JSONL files under the supplied roots.
 func ReadRoots(roots []string) (map[string][]Candidate, error) {
+	return ReadRootsContext(context.Background(), roots)
+}
+
+func ReadRootsContext(ctx context.Context, roots []string) (map[string][]Candidate, error) {
 	result := make(map[string][]Candidate)
 	seen := make(map[string]bool)
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if walkErr != nil {
 				return walkErr
 			}
 			if entry.IsDir() || filepath.Ext(path) != ".jsonl" {
 				return nil
 			}
-			info, err := entry.Info()
-			if err != nil {
-				return err
-			}
-			return scanHistoryFile(path, info.ModTime(), result, seen)
+			return scanHistoryFileContext(ctx, path, result, seen)
 		})
 		if err != nil && !os.IsNotExist(err) {
 			return nil, err
@@ -83,7 +98,7 @@ func ReadRoots(roots []string) (map[string][]Candidate, error) {
 	return result, nil
 }
 
-func scanHistoryFile(path string, modified time.Time, result map[string][]Candidate, seen map[string]bool) error {
+func scanHistoryFileContext(ctx context.Context, path string, result map[string][]Candidate, seen map[string]bool) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -91,7 +106,13 @@ func scanHistoryFile(path string, modified time.Time, result map[string][]Candid
 	defer file.Close()
 	reader := bufio.NewReaderSize(file, 64*1024)
 	var fragments []byte
+	pending := map[string][]Candidate{}
+	outcomes := map[string]string{}
+	lineNumber := 0
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		line, readErr := reader.ReadSlice('\n')
 		if readErr == bufio.ErrBufferFull {
 			fragments = append(fragments, line...)
@@ -102,33 +123,86 @@ func scanHistoryFile(path string, modified time.Time, result map[string][]Candid
 			line = fragments
 		}
 		fragments = fragments[:0]
-		if !bytes.Contains(line, []byte(githubInstaller)) && !bytes.Contains(line, []byte("skills")) {
-			if readErr == io.EOF {
-				return nil
-			}
-			if readErr != nil {
-				return readErr
-			}
-			continue
-		}
-		for _, command := range trustedCommands(line) {
-			for _, candidate := range parseInstallCommand(command) {
-				candidate.When = modified
-				key := candidate.Name + "\x00" + candidate.Source + "\x00" + candidate.Ref + "\x00" + candidate.SkillPath
-				if seen[key] {
-					continue
+		lineNumber++
+		relevant := bytes.Contains(line, []byte(githubInstaller)) || bytes.Contains(line, []byte("skills")) || bytes.Contains(line, []byte(`\u`))
+		if !relevant {
+			for id := range pending {
+				encoded, _ := json.Marshal(id)
+				if bytes.Contains(line, encoded) {
+					relevant = true
+					break
 				}
-				seen[key] = true
-				result[candidate.Name] = append(result[candidate.Name], candidate)
+			}
+		}
+		var record historyRecord
+		if relevant && json.Unmarshal(line, &record) == nil {
+			callID := record.Payload.CallID
+			if record.Payload.Type == "function_call_output" || record.Payload.Type == "custom_tool_call_output" {
+				if callID != "" {
+					outcomes[callID] = executionOutcome(record.Payload.Output)
+				}
+			}
+			for _, content := range record.Message.Content {
+				if content.Type == "tool_result" && content.ToolUseID != "" {
+					outcome := executionOutcome(content.Content)
+					if content.IsError {
+						outcome = "failed"
+					}
+					outcomes[content.ToolUseID] = outcome
+				}
+			}
+			commands := trustedRecordCommands(record)
+			for i, command := range commands {
+				id := callID
+				if record.Type == "assistant" {
+					var ids []string
+					for _, content := range record.Message.Content {
+						if content.Type == "tool_use" && (content.Name == "Bash" || content.Name == "bash") {
+							ids = append(ids, content.ID)
+						}
+					}
+					if i < len(ids) {
+						id = ids[i]
+					}
+				}
+				for _, candidate := range parseInstallCommand(command) {
+					candidate.When = record.Timestamp
+					candidate.EvidenceID = path + ":" + strconv.Itoa(lineNumber)
+					candidate.Outcome = "unknown"
+					if candidate.Directory == "" {
+						candidate.Directory = commandDirectory(record)
+					}
+					key := id
+					if key == "" {
+						key = candidate.EvidenceID
+					}
+					pending[key] = append(pending[key], candidate)
+				}
 			}
 		}
 		if readErr == io.EOF {
-			return nil
+			break
 		}
 		if readErr != nil {
 			return readErr
 		}
 	}
+	for id, candidates := range pending {
+		for _, candidate := range candidates {
+			if outcome := outcomes[id]; outcome != "" {
+				candidate.Outcome = outcome
+			}
+			// Retain distinct attempts and their actual outcomes. Never let file
+			// traversal order turn an earlier failure into the latest evidence.
+			key := candidate.EvidenceID + "\x00" + candidate.Name + "\x00" + candidate.Source + "\x00" + candidate.SkillPath
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			result[candidate.Name] = append(result[candidate.Name], candidate)
+		}
+	}
+	return nil
 }
 
 func trustedCommands(line []byte) []string {
@@ -136,6 +210,10 @@ func trustedCommands(line []byte) []string {
 	if json.Unmarshal(line, &record) != nil {
 		return nil
 	}
+	return trustedRecordCommands(record)
+}
+
+func trustedRecordCommands(record historyRecord) []string {
 	var commands []string
 	if record.Type == "response_item" {
 		switch record.Payload.Type {
@@ -152,12 +230,7 @@ func trustedCommands(line []byte) []string {
 			if record.Payload.Name == "exec" {
 				var input string
 				if json.Unmarshal(record.Payload.Input, &input) == nil {
-					for _, match := range commandProperty.FindAllStringSubmatch(input, -1) {
-						var command string
-						if json.Unmarshal([]byte(match[1]), &command) == nil {
-							commands = append(commands, command)
-						}
-					}
+					commands = append(commands, invokedCommands(input)...)
 				}
 			}
 		}
@@ -173,17 +246,53 @@ func trustedCommands(line []byte) []string {
 }
 
 func parseInstallCommand(command string) []Candidate {
+	words := ShellWords(strings.TrimSpace(command))
+	directory := ""
+	if len(words) > 3 && words[0] == "cd" && filepath.IsAbs(words[1]) && words[2] == "&&" {
+		directory, words = words[1], words[3:]
+	}
+	// Only literal, unconditional invocations are supported. Unsupported shell
+	// control flow remains unverified evidence, never an installation fact.
+	if strings.Contains(command, "<<") || strings.Contains(command, "$ (") || strings.Contains(command, "$(") || strings.Contains(command, "`") {
+		return nil
+	}
+	for _, word := range words {
+		if word == "&&" || word == "||" || word == "|" || word == "&" || word == ";" || word == "\n" || word == "--help" || word == "-h" || word == "--list" {
+			return nil
+		}
+	}
 	var result []Candidate
-	for _, segment := range shellCommandSegments(ShellWords(command)) {
-		result = append(result, parseInstallerCommandWords(segment)...)
-		result = append(result, parseSkillsAddWords(segment)...)
+	for _, segment := range shellCommandSegments(words) {
+		if len(segment) == 0 {
+			continue
+		}
+		candidates := append(parseInstallerCommandWords(segment), parseSkillsAddWords(segment)...)
+		for _, candidate := range candidates {
+			candidate.Destination = optionValue(segment, "--dest", "--dir")
+			candidate.Directory = directory
+			for i, value := range segment {
+				if value == "-g" || value == "--global" {
+					candidate.Global = true
+				}
+				if value == "-a" || value == "--agent" {
+					for j := i + 1; j < len(segment) && !strings.HasPrefix(segment[j], "-"); j++ {
+						candidate.Hosts = append(candidate.Hosts, segment[j])
+					}
+				}
+			}
+			result = append(result, candidate)
+		}
 	}
 	return result
 }
 
 func parseInstallerCommandWords(words []string) []Candidate {
 	var result []Candidate
+	words = skipEnvironmentPrefix(words)
 	for index, word := range words {
+		if index > 1 || index == 1 && !strings.HasPrefix(filepath.Base(words[0]), "python") {
+			continue
+		}
 		if filepath.Base(strings.ReplaceAll(word, `\`, "/")) != githubInstaller {
 			continue
 		}
@@ -339,26 +448,39 @@ func skillsAddArguments(words []string) ([]string, bool) {
 	command := filepath.Base(words[0])
 	command, _, _ = strings.Cut(command, "@")
 	if command == "npx" || command == "bunx" {
-		for index := 1; index+1 < len(words); index++ {
-			name, _, _ := strings.Cut(filepath.Base(words[index]), "@")
-			if name == "skills" && isSkillsAddVerb(words[index+1]) {
-				return words[index+2:], true
-			}
+		index := 1
+		for index < len(words) && (words[index] == "--yes" || words[index] == "-y" || words[index] == "--quiet") {
+			index++
+		}
+		if index+1 >= len(words) {
+			return nil, false
+		}
+		name, _, _ := strings.Cut(filepath.Base(words[index]), "@")
+		if name == "skills" && isSkillsAddVerb(words[index+1]) {
+			return words[index+2:], true
 		}
 		return nil, false
 	}
 	if command != "npm" || len(words) < 2 || words[1] != "exec" {
 		return nil, false
 	}
-	for index := 2; index+2 < len(words); index++ {
-		name, _, _ := strings.Cut(filepath.Base(words[index+1]), "@")
-		if words[index] == "--" && name == "skills" && isSkillsAddVerb(words[index+2]) {
-			return words[index+3:], true
-		}
-		name, _, _ = strings.Cut(filepath.Base(words[index]), "@")
-		if name == "skills" && isSkillsAddVerb(words[index+2]) && words[index+1] == "--" {
-			return words[index+3:], true
-		}
+	index := 2
+	for index < len(words) && (words[index] == "--yes" || words[index] == "-y" || words[index] == "--quiet") {
+		index++
+	}
+	if index < len(words) && words[index] == "--" {
+		index++
+	}
+	if index >= len(words) {
+		return nil, false
+	}
+	name, _, _ := strings.Cut(filepath.Base(words[index]), "@")
+	index++
+	if index < len(words) && words[index] == "--" {
+		index++
+	}
+	if name == "skills" && index < len(words) && isSkillsAddVerb(words[index]) {
+		return words[index+1:], true
 	}
 	return nil, false
 }
@@ -465,6 +587,14 @@ func ShellWords(command string) []string {
 			} else {
 				word.WriteByte(ch)
 			}
+			continue
+		}
+		if ch == '#' && word.Len() == 0 {
+			for i < len(command) && command[i] != '\n' {
+				i++
+			}
+			flush()
+			words = append(words, "\n")
 			continue
 		}
 		if ch == '\'' || ch == '"' {

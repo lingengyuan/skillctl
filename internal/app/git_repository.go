@@ -59,7 +59,7 @@ func processGit(action string, skills []skill, state *trackedState, session *sou
 		if sink, ok := stdout.(*reportSink); ok {
 			sink.markGit(repos[root].Skills, root)
 		}
-		if processRepository(session.ctx, session.networkTimeout, action, repos[root], stdout, stderr, state.readOnly) {
+		if processRepository(session.ctx, session.networkTimeout, action, repos[root], stdout, stderr, state.readOnly || action == "check") {
 			failed = true
 		}
 	}
@@ -142,30 +142,56 @@ func processRepository(ctx context.Context, networkTimeout time.Duration, action
 	if len(preview) > 0 && preview[0] {
 		return previewRepository(ctx, networkTimeout, repo, stdout, stderr)
 	}
-	branch, err := gitstore.Output(repo.Root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	branch, err := gitstore.OutputContext(ctx, repo.Root, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		printSkills(stdout, repo.Skills, "skipped (detached HEAD)", "blocked", "git_state_blocks_update", false)
 		return false
 	}
-	remote, err := gitstore.Output(repo.Root, "config", "--get", "branch."+branch+".remote")
+	remote, err := gitstore.OutputContext(ctx, repo.Root, "config", "--get", "branch."+branch+".remote")
 	if err != nil || remote == "" || remote == "." {
 		printSkills(stdout, repo.Skills, "skipped (no upstream)", "blocked", "git_state_blocks_update", false)
 		return false
 	}
-	if _, err := gitstore.Output(repo.Root, "rev-parse", "--abbrev-ref", "@{upstream}"); err != nil {
+	if _, err := gitstore.OutputContext(ctx, repo.Root, "rev-parse", "--abbrev-ref", "@{upstream}"); err != nil {
 		printSkills(stdout, repo.Skills, "skipped (no upstream)", "blocked", "git_state_blocks_update", false)
 		return false
 	}
-	if _, err := gitstore.NetworkOutputWithTimeout(ctx, networkTimeout, repo.Root, "fetch", "--prune", "--recurse-submodules=no", remote); err != nil {
+	source, err := gitstore.OutputContext(ctx, repo.Root, "remote", "get-url", remote)
+	if err != nil {
+		reportFailure(stderr, repo.Skills[0], err.Error())
+		return true
+	}
+	if err = validateSourceURL(source); err != nil {
+		reportFailure(stderr, repo.Skills[0], err.Error())
+		return true
+	}
+	merge, err := gitstore.OutputContext(ctx, repo.Root, "config", "--get", "branch."+branch+".merge")
+	if err != nil {
+		reportFailure(stderr, repo.Skills[0], err.Error())
+		return true
+	}
+	session, cleanup := commandSourceSession(ctx, networkTimeout, stderr)
+	defer cleanup()
+	cache, err := session.source(source, merge)
+	if err != nil {
+		reportFailure(stderr, repo.Skills[0], err.Error())
+		return true
+	}
+	target, err := session.revision(cache)
+	if err != nil {
+		reportFailure(stderr, repo.Skills[0], err.Error())
+		return true
+	}
+	if _, err := gitstore.OutputContext(ctx, repo.Root, "fetch", "--no-tags", "--no-recurse-submodules", "--", cache, target); err != nil {
 		printSkills(stderr, repo.Skills, "failed (git fetch: "+oneLine(err.Error())+")", "error", "provider_error", false)
 		return true
 	}
-	dirtyOutput, err := gitstore.Output(repo.Root, "status", "--porcelain")
+	dirtyOutput, err := gitstore.OutputContext(ctx, repo.Root, "status", "--porcelain")
 	if err != nil {
 		printSkills(stderr, repo.Skills, "failed (git status)", "error", "provider_error", false)
 		return true
 	}
-	counts, err := gitstore.Output(repo.Root, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
+	counts, err := gitstore.OutputContext(ctx, repo.Root, "rev-list", "--left-right", "--count", "HEAD..."+target)
 	if err != nil {
 		printSkills(stderr, repo.Skills, "failed (compare upstream)", "error", "provider_error", false)
 		return true
@@ -189,7 +215,7 @@ func processRepository(ctx context.Context, networkTimeout time.Duration, action
 		return false
 	}
 
-	changed, err := repositorySkillChanges(repo.Root, repo.Skills, "HEAD", "@{upstream}")
+	changed, err := repositorySkillChanges(repo.Root, repo.Skills, "HEAD", target)
 	if err != nil {
 		printSkills(stderr, repo.Skills, "failed (compare skill trees: "+oneLine(err.Error())+")", "error", "provider_error", false)
 		return true
@@ -219,16 +245,17 @@ func processRepository(ctx context.Context, networkTimeout time.Duration, action
 		return false
 	}
 
-	oldHead, _ := gitstore.Output(repo.Root, "rev-parse", "--short", "HEAD")
+	oldHead, _ := gitstore.OutputContext(ctx, repo.Root, "rev-parse", "--short", "HEAD")
 
-	operation, err := beginGitOperation(repo.Root, repo.Skills)
+	operation, err := beginGitOperation(repo.Root, repo.Skills, target)
 	if err != nil {
 		for _, item := range repo.Skills {
 			reportFailure(stderr, item, "backup repository: "+err.Error())
 		}
 		return true
 	}
-	_, pullErr := gitstore.NetworkOutputWithTimeout(ctx, networkTimeout, repo.Root, "-c", "submodule.recurse=false", "-c", "maintenance.auto=false", "-c", "gc.auto=0", "pull", "--ff-only", "--no-rebase", "--recurse-submodules=no")
+	recordContextOperation(ctx, operation)
+	_, pullErr := gitstore.OutputContext(ctx, repo.Root, "-c", "submodule.recurse=false", "-c", "maintenance.auto=false", "-c", "gc.auto=0", "merge", "--ff-only", "--no-edit", target)
 	if err := operation.finishExternal(pullErr); err != nil {
 		for _, item := range repo.Skills {
 			reportFailure(stderr, item, "git pull: "+err.Error())
@@ -236,7 +263,7 @@ func processRepository(ctx context.Context, networkTimeout time.Duration, action
 		return true
 	}
 
-	newHead, err := gitstore.Output(repo.Root, "rev-parse", "--short", "HEAD")
+	newHead, err := gitstore.OutputContext(ctx, repo.Root, "rev-parse", "--short", "HEAD")
 	if err != nil {
 		printSkills(stderr, repo.Skills, "failed (verify updated HEAD)", "error", "provider_error", false)
 		return true

@@ -15,6 +15,7 @@ import (
 // report is deliberately a value object: rendering does not need to know how
 // an adapter discovered ownership.
 type report struct {
+	Upstream        upstreamObservation  `json:"upstream"`
 	SchemaVersion   int                  `json:"schemaVersion"`
 	Identity        string               `json:"identity"`
 	Path            string               `json:"path"`
@@ -40,17 +41,20 @@ type report struct {
 }
 
 type reportInstallation struct {
-	Path            string `json:"path"`
-	Host            string `json:"host"`
-	Scope           string `json:"scope"`
-	Provider        string `json:"provider"`
-	Owner           string `json:"owner"`
-	Revision        string `json:"revision,omitempty"`
-	Drift           string `json:"drift"`
-	Status          string `json:"status"`
-	UpdateAvailable bool   `json:"updateAvailable"`
-	Executor        string `json:"executor"`
-	Error           string `json:"error,omitempty"`
+	Upstream        upstreamObservation `json:"upstream"`
+	State           string              `json:"state"`
+	ReasonCode      string              `json:"reasonCode,omitempty"`
+	Path            string              `json:"path"`
+	Host            string              `json:"host"`
+	Scope           string              `json:"scope"`
+	Provider        string              `json:"provider"`
+	Owner           string              `json:"owner"`
+	Revision        string              `json:"revision,omitempty"`
+	Drift           string              `json:"drift"`
+	Status          string              `json:"status"`
+	UpdateAvailable bool                `json:"updateAvailable"`
+	Executor        string              `json:"executor"`
+	Error           string              `json:"error,omitempty"`
 }
 
 func reportFor(item skill, provider, owner string, evidence []string, drift, status string, available bool, executor, err string) report {
@@ -70,6 +74,18 @@ func attachSourceFailure(r *report, err error) {
 func finalizeReports(reports []report) []report {
 	for i := range reports {
 		reports[i].SchemaVersion = 1
+		if reports[i].Error != "" {
+			reports[i].Upstream = upstreamObservation{Status: "unknown", Reason: reports[i].ReasonCode}
+		}
+		if reports[i].Upstream.Status == "" {
+			reports[i].Upstream.Status = "not-checked"
+			if reports[i].Provider == "local-authoring" || reports[i].State == "managed" || reports[i].State == "disabled" {
+				reports[i].Upstream.Status = "not-applicable"
+			}
+			if reports[i].Error != "" {
+				reports[i].Upstream = upstreamObservation{Status: "unknown", Reason: reports[i].ReasonCode}
+			}
+		}
 		if reports[i].State == "" {
 			reports[i].State, reports[i].ReasonCode = classifyReport(reports[i])
 		}
@@ -99,6 +115,7 @@ func classifyReport(r report) (string, string) {
 }
 
 func checkedReport(r *report) {
+	r.Upstream = observedUpstream(r.UpdateAvailable)
 	r.State, r.ReasonCode = "current", ""
 	if r.Drift == "modified" {
 		r.State, r.ReasonCode = "modified", "local_changes"
@@ -108,6 +125,7 @@ func checkedReport(r *report) {
 		r.State, r.ReasonCode = "unknown", "local_baseline_unavailable"
 	}
 	if r.Error != "" {
+		r.Upstream = upstreamObservation{Status: "unknown", Reason: "provider_error"}
 		r.State, r.ReasonCode = "error", "provider_error"
 	}
 }
@@ -232,7 +250,9 @@ func mergeReportGroup(group []report) report {
 	failureGroups := map[string]bool{}
 	failureSources := map[string]bool{}
 	failureStages := map[string]bool{}
+	upstreamStates := map[string]bool{}
 	for _, item := range group {
+		upstreamStates[item.Upstream.Status] = true
 		providers[item.Provider] = true
 		owners[item.Owner] = true
 		hosts[item.Host] = true
@@ -254,6 +274,7 @@ func mergeReportGroup(group []report) report {
 			failureStages[item.FailureStage] = true
 		}
 		merged.Installations = append(merged.Installations, reportInstallation{
+			Upstream: item.Upstream, State: item.State, ReasonCode: item.ReasonCode,
 			Path:            item.Path,
 			Host:            item.Host,
 			Scope:           item.Scope,
@@ -276,6 +297,12 @@ func mergeReportGroup(group []report) report {
 	}
 
 	if len(providers) > 1 {
+		merged.Upstream = upstreamObservation{Status: "mixed"}
+		if len(upstreamStates) == 1 {
+			for status := range upstreamStates {
+				merged.Upstream.Status = status
+			}
+		}
 		merged.Provider = "multiple"
 	}
 	if len(owners) > 1 {
@@ -403,6 +430,9 @@ func (s *reportSink) set(items []skill, message, state, reason string, available
 			if fsutil.SamePath(s.reports[i].Path, item.Path) {
 				r := &s.reports[i]
 				r.Status, r.State, r.ReasonCode, r.UpdateAvailable = message, state, reason, available
+				if state == "current" || state == "outdated" || state == "modified" {
+					r.Upstream = observedUpstream(available)
+				}
 				if state == "modified" {
 					r.Drift = "modified"
 				}

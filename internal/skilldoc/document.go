@@ -20,20 +20,35 @@ func ReadName(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := Validate(document); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(document.Name), nil
+}
+
+// NameError reports a portability violation, not an unreadable document.
+// Installed host packages retain their identity even when their names differ
+// from the portable Skill format. New installations still reject this error.
+type NameError struct{ Message string }
+
+func (e *NameError) Error() string { return e.Message }
+
+// Validate checks required metadata and portable naming without reading files.
+func Validate(document Document) error {
 	name := strings.TrimSpace(document.Name)
 	if name == "" {
-		return "", errors.New("missing name")
-	}
-	if len(name) > 64 {
-		return "", errors.New("name exceeds 64 characters")
-	}
-	if !ValidName(name) {
-		return "", fmt.Errorf("invalid name %q: use lowercase letters, numbers, and hyphens", name)
+		return errors.New("missing name")
 	}
 	if strings.TrimSpace(document.Description) == "" {
-		return "", errors.New("missing description")
+		return errors.New("missing description")
 	}
-	return name, nil
+	if len(name) > 64 {
+		return &NameError{Message: "name exceeds 64 characters"}
+	}
+	if !ValidName(name) {
+		return &NameError{Message: fmt.Sprintf("invalid name %q: use lowercase letters, numbers, and hyphens", name)}
+	}
+	return nil
 }
 
 // ErrMissingFrontMatter identifies documents without an opening YAML front-matter delimiter.
@@ -52,6 +67,11 @@ func Read(path string) (Document, error) {
 	if err != nil {
 		return Document{}, fmt.Errorf("read skill: %w", err)
 	}
+	return Parse(content)
+}
+
+// Parse reads a document directly from immutable source bytes.
+func Parse(content []byte) (Document, error) {
 	frontMatter, err := FrontMatter(content)
 	if err != nil {
 		return Document{}, err
