@@ -2,7 +2,7 @@
 
 面向个人和小团队的 Skill 生命周期管理 CLI。统一发现多个 Agent 的安装、解释来源和本地修改，完成安装、分发、更新、停用、移除、固定版本和恢复。现有安装保留位置与管理者；新安装进入共享存储，再以链接或副本提供给 Agent。
 
-本文档对应 `v0.0.4`。安装脚本获取 GitHub 最新正式发布版，也可从源码构建；版本变化见 [CHANGELOG](CHANGELOG.md)。
+本文档对应 `v0.0.5`。安装脚本获取 GitHub 最新正式发布版，也可从源码构建；版本变化见 [GitHub Releases](https://github.com/lingengyuan/skillctl/releases)。
 
 ## 从源码运行
 
@@ -29,7 +29,7 @@ Invoke-WebRequest https://raw.githubusercontent.com/lingengyuan/skillctl/main/sc
 .\install.ps1
 ```
 
-也可以运行 `go install github.com/lingengyuan/skillctl@latest`。重新执行对应安装命令可更新程序；脚本支持 `./install.sh --version v0.0.4` 或 `.\install.ps1 -Version v0.0.4` 安装指定发布版本。
+也可以运行 `go install github.com/lingengyuan/skillctl@latest`。重新执行对应安装命令可更新程序；脚本支持 `./install.sh --version v0.0.5` 或 `.\install.ps1 -Version v0.0.5` 安装指定发布版本。
 
 ## 日常使用
 
