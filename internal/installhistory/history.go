@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -248,7 +249,7 @@ func trustedRecordCommands(record historyRecord) []string {
 func parseInstallCommand(command string) []Candidate {
 	words := ShellWords(strings.TrimSpace(command))
 	directory := ""
-	if len(words) > 3 && words[0] == "cd" && filepath.IsAbs(words[1]) && words[2] == "&&" {
+	if len(words) > 3 && words[0] == "cd" && (filepath.IsAbs(words[1]) || path.IsAbs(words[1])) && words[2] == "&&" {
 		directory, words = words[1], words[3:]
 	}
 	// Only literal, unconditional invocations are supported. Unsupported shell

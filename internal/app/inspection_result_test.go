@@ -29,7 +29,8 @@ func TestInspectionKeepsLocalAndUpstreamFacts(t *testing.T) {
 }
 
 func TestHistoryEligibilityRequiresSuccessAndTargetCorrelation(t *testing.T) {
-	item := skill{Name: "demo", Path: "/installed/demo", Host: "codex", Scope: "user"}
+	root := t.TempDir()
+	item := skill{Name: "demo", Path: filepath.Join(root, "demo"), Host: "codex", Scope: "user"}
 	for _, test := range []struct {
 		candidate installhistory.Candidate
 		want      bool
@@ -38,8 +39,8 @@ func TestHistoryEligibilityRequiresSuccessAndTargetCorrelation(t *testing.T) {
 		{installhistory.Candidate{Source: "source", Name: "demo", Outcome: "failed"}, false},
 		{installhistory.Candidate{Source: "source", Name: "demo", Outcome: "unknown"}, false},
 		{installhistory.Candidate{Source: "source", Name: "demo", Outcome: "succeeded"}, true},
-		{installhistory.Candidate{Source: "source", Outcome: "succeeded", Destination: "/installed"}, true},
-		{installhistory.Candidate{Source: "source", Name: "demo", Outcome: "succeeded", Destination: "/unrelated"}, false},
+		{installhistory.Candidate{Source: "source", Outcome: "succeeded", Destination: root}, true},
+		{installhistory.Candidate{Source: "source", Name: "demo", Outcome: "succeeded", Destination: filepath.Join(root, "unrelated")}, false},
 	} {
 		got := eligibleHistoryCandidates(item, map[string][]installhistory.Candidate{test.candidate.Name: {test.candidate}})
 		if (len(got) > 0) != test.want {
