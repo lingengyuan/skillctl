@@ -1,0 +1,201 @@
+{
+  "environment": {
+    "go": "go version go1.27.0 darwin/arm64",
+    "gomaxprocs": 4
+  },
+  "source_sha256": "923302318efbb0aabc10f5fa341b9ce3d49fb6b01e117171cc9fd0ed242c6222",
+  "files": 157,
+  "bytes": 945455724,
+  "excluded_recent": 4,
+  "exclude_recent_seconds": 300,
+  "rounds": 7,
+  "corpus_unchanged": true,
+  "same_candidates": true,
+  "samples": [
+    {
+      "seconds": 0.946695458,
+      "alloc_bytes": 620347960,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "candidate_filter",
+      "round": 1
+    },
+    {
+      "seconds": 0.865376375,
+      "alloc_bytes": 620698976,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "buffer_reuse",
+      "round": 1
+    },
+    {
+      "seconds": 0.909400042,
+      "alloc_bytes": 1607272488,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "before",
+      "round": 1
+    },
+    {
+      "seconds": 0.911103208,
+      "alloc_bytes": 1607569392,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "before",
+      "round": 2
+    },
+    {
+      "seconds": 0.929978083,
+      "alloc_bytes": 620359760,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "candidate_filter",
+      "round": 2
+    },
+    {
+      "seconds": 0.846363667,
+      "alloc_bytes": 621148376,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "buffer_reuse",
+      "round": 2
+    },
+    {
+      "seconds": 0.933113791,
+      "alloc_bytes": 620076712,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "candidate_filter",
+      "round": 3
+    },
+    {
+      "seconds": 0.854828958,
+      "alloc_bytes": 621595384,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "buffer_reuse",
+      "round": 3
+    },
+    {
+      "seconds": 0.908372041,
+      "alloc_bytes": 1607899040,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "before",
+      "round": 3
+    },
+    {
+      "seconds": 0.895927458,
+      "alloc_bytes": 621017392,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "buffer_reuse",
+      "round": 4
+    },
+    {
+      "seconds": 0.93375525,
+      "alloc_bytes": 620125608,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "candidate_filter",
+      "round": 4
+    },
+    {
+      "seconds": 0.9322945,
+      "alloc_bytes": 1606831256,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "before",
+      "round": 4
+    },
+    {
+      "seconds": 0.9033565,
+      "alloc_bytes": 1607854040,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "before",
+      "round": 5
+    },
+    {
+      "seconds": 0.860162833,
+      "alloc_bytes": 621412296,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "buffer_reuse",
+      "round": 5
+    },
+    {
+      "seconds": 0.939439459,
+      "alloc_bytes": 619989800,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "candidate_filter",
+      "round": 5
+    },
+    {
+      "seconds": 0.858285917,
+      "alloc_bytes": 621215792,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "buffer_reuse",
+      "round": 6
+    },
+    {
+      "seconds": 0.94796775,
+      "alloc_bytes": 620367864,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "candidate_filter",
+      "round": 6
+    },
+    {
+      "seconds": 0.93704675,
+      "alloc_bytes": 1608310272,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "before",
+      "round": 6
+    },
+    {
+      "seconds": 0.918967541,
+      "alloc_bytes": 1606962424,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "before",
+      "round": 7
+    },
+    {
+      "seconds": 0.948502334,
+      "alloc_bytes": 620706432,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "candidate_filter",
+      "round": 7
+    },
+    {
+      "seconds": 0.866588291,
+      "alloc_bytes": 621343328,
+      "candidates": 2,
+      "digest": "5ea3d805b25e03c017bdfec97ec47621bbe7ef3f1cd3f7a0478f14976c0b74b7",
+      "variant": "buffer_reuse",
+      "round": 7
+    }
+  ],
+  "summary": {
+    "before": {
+      "seconds": 0.911103208,
+      "alloc_bytes": 1607569392,
+      "candidates": 2
+    },
+    "buffer_reuse": {
+      "seconds": 0.860162833,
+      "alloc_bytes": 621215792,
+      "candidates": 2
+    },
+    "candidate_filter": {
+      "seconds": 0.939439459,
+      "alloc_bytes": 620347960,
+      "candidates": 2
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "dry_run": true,
+  "controlled_ablation": false,
+  "runs": [
+    {
+      "args": [
+        "check",
+        "--dry-run",
+        "--timeout",
+        "10s",
+        "--json-version",
+        "2"
+      ],
+      "seconds": 25.879,
+      "exit": 1,
+      "items": 122,
+      "states": {
+        "untracked": 20,
+        "managed": 45,
+        "current": 14,
+        "modified": 10,
+        "error": 7,
+        "outdated": 24,
+        "invalid": 2
+      },
+      "diagnostic_codes": [
+        "invalid_skill",
+        "invalid_skill",
+        "source_recovery_incomplete"
+      ],
+      "source_recovery_network_timeout": true
+    },
+    {
+      "args": [
+        "update",
+        "lark-doc",
+        "--dry-run",
+        "--timeout",
+        "10s",
+        "--json-version",
+        "2"
+      ],
+      "seconds": 1.254,
+      "exit": 1,
+      "items": 1,
+      "states": {
+        "outdated": 1
+      },
+      "diagnostic_codes": [
+        "invalid_skill",
+        "invalid_skill"
+      ],
+      "source_recovery_network_timeout": false
+    }
+  ],
+  "follow_up": {
+    "args": [
+      "check",
+      "--dry-run",
+      "--no-history",
+      "--timeout",
+      "10s",
+      "--json-version",
+      "2"
+    ],
+    "seconds": 4.196,
+    "exit": 1,
+    "items": 122,
+    "states": {
+      "untracked": 20,
+      "managed": 45,
+      "current": 21,
+      "modified": 10,
+      "outdated": 24,
+      "invalid": 2
+    },
+    "errors": [],
+    "diagnostic_codes": [
+      "invalid_skill",
+      "invalid_skill"
+    ]
+  }
+}

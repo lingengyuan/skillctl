@@ -2,7 +2,7 @@
 
 面向个人和小团队的 Skill 生命周期管理 CLI。统一发现多个 Agent 的安装、解释来源和本地修改，完成安装、分发、更新、停用、移除、固定版本和恢复。现有安装保留位置与管理者；新安装进入共享存储，再以链接或副本提供给 Agent。
 
-本文档对应 `v0.0.3`。安装脚本获取 GitHub 最新正式发布版，也可从源码构建；版本变化见 [CHANGELOG](CHANGELOG.md)。
+本文档对应 `v0.0.4`。安装脚本获取 GitHub 最新正式发布版，也可从源码构建；版本变化见 [CHANGELOG](CHANGELOG.md)。
 
 ## 从源码运行
 
@@ -29,7 +29,7 @@ Invoke-WebRequest https://raw.githubusercontent.com/lingengyuan/skillctl/main/sc
 .\install.ps1
 ```
 
-也可以运行 `go install github.com/lingengyuan/skillctl@latest`。重新执行对应安装命令可更新程序；脚本支持 `./install.sh --version v0.0.3` 或 `.\install.ps1 -Version v0.0.3` 安装指定发布版本。
+也可以运行 `go install github.com/lingengyuan/skillctl@latest`。重新执行对应安装命令可更新程序；脚本支持 `./install.sh --version v0.0.4` 或 `.\install.ps1 -Version v0.0.4` 安装指定发布版本。
 
 ## 日常使用
 
@@ -191,17 +191,23 @@ skillctl rollback OPERATION_ID
 
 全部命令与选项见 [命令参考](docs/commands.md)，模块与事务边界见 [实现说明](docs/architecture.md)。
 
+## 代码结构
+
+根目录的 `main.go` 负责程序入口；`internal/app` 负责命令和生命周期编排。参数解析、Git 缓存、安装历史、Skill 文档、归档与文件操作分别位于 `internal/cli`、`gitstore`、`installhistory`、`skilldoc`、`archive`、`fsutil`。职责与依赖说明见 [实现说明](docs/architecture.md)。
+
 ## 开发与验证
 
 ```sh
-gofmt -w *.go
+gofmt -w .
 go test ./...
 go test -race ./...
-go test -tags=integration . -run '^TestIntegration'
+go test -tags=integration ./... -run '^TestIntegration'
 go vet ./...
 ```
 
-新增测试覆盖多 Agent 生命周期、复制保护、同名不同源、共享路径限制、profile 切换、两环境冻结复现、制品篡改、原生插件记录与整包范围、进程中断和恢复失败。Git 集成测试使用本地临时仓库；宿主插件与外部 Provider 更新采用可控 fixture，不会更新开发者的真实插件。
+测试还覆盖来源缓存锁的进程退出释放、旧锁迁移、活动锁保护和共享来源只同步一次。既有测试覆盖多 Agent 生命周期、复制保护、同名不同源、共享路径限制、profile 切换、两环境冻结复现、制品篡改、原生插件记录与整包范围、进程中断和恢复失败。Git 集成测试使用本地临时仓库；宿主插件与外部 Provider 更新采用可控 fixture，不会更新开发者的真实插件。
+
+性能消融可运行 `python3 scripts/ablation.py`，只修改临时源码副本。固定场景、真实历史数据、保留与放弃的优化及复现方法见 [性能实验](docs/performance.md)。
 
 CI 在 Linux、macOS 和 Windows 运行测试，Windows 另有 junction 集成测试；本机交叉编译不能替代 Windows 原生执行。源码继续使用 Go 单进程、TOML/JSON 文件与原有依赖，无数据库或后台服务。
 
