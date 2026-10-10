@@ -85,8 +85,11 @@ func TestCheckFindsRecursiveLocalSkill(t *testing.T) {
 	if code := run([]string{"check", "--path", root}, &stdout, &stderr); code != 1 {
 		t.Fatalf("text check failed (%d): %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "skillctl track --source SOURCE_URL declared-name") {
+	if !strings.Contains(stdout.String(), "skillctl track declared-name --source") {
 		t.Fatalf("missing track hint: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "skillctl track declared-name --from-history") {
+		t.Fatalf("hint does not mention the installer-record path: %s", stdout.String())
 	}
 }
 
