@@ -83,7 +83,11 @@ jobs:
           cache: true
       - name: Install analysis tools
         run: |
-          go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          # Pinned to the commit that reads the export data Go 1.27.2 produces.
+          # Released v0.8.0 and v0.8.1 fail with "export data version 5 is
+          # greater than maximum supported version 4" (dominikh/go-tools#1835);
+          # return to a tagged release once it includes that fix.
+          go install honnef.co/go/tools/cmd/staticcheck@0812471a599d
           go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
       - name: Staticcheck
         run: staticcheck -checks=all -tags=ablation ./...
