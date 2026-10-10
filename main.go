@@ -8,7 +8,7 @@ import (
 	"github.com/lingengyuan/skillctl/internal/app"
 )
 
-var version = "0.0.5"
+var version = "0.4.1"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
