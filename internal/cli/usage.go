@@ -53,6 +53,10 @@ Common options (may appear before or after positional arguments):
   --command-timeout DURATION  optional total command budget
   --recovery-timeout DURATION  optional recovery budget (defaults to --timeout)
   --verbose, -v       show all installation details
+  --quiet, -q         hide informational findings
+  --strict            fail when broken or invalid entries are present
+  --reinstall         reinstall skills whose content is gone, when a source is on record
+  --yes, -y           accept prompts without asking (for scripts and CI)
   --json              preserve v1 output for list/check/update/doctor
   --json-version 2    unified inventory, diagnostics, plan, and operation envelope
   --all-matches       select every content copy with a requested ambiguous name
@@ -73,7 +77,7 @@ Source and environment options:
   --profile NAME      select a declared environment profile
   --frozen            sync/import only exact locked revisions; never resolve latest
   --output FILE, -o   output manifest for export
-  --fix               repair verified stale source entries with doctor
+  --fix               with doctor: repair dangling links and stale source entries
 
 Examples:
   skillctl install ./my-skill --host codex --host claude

@@ -236,19 +236,30 @@ func inspectDetailed(ctx context.Context, networkTimeout time.Duration, action s
 	return finalizeReports(reports), failed
 }
 
+// printTrackRepairHint tells the user how to record an update source for skills
+// that have none. The URL cannot be inferred, so the hint names the exact
+// command and points at where the source is usually found.
 func printTrackRepairHint(w io.Writer, reports []report) {
-	count := 0
-	name := ""
+	var names []string
 	for _, r := range reports {
 		if r.Provider == "local-authoring" && r.State == "untracked" {
-			count++
-			name = r.Identity
+			names = append(names, r.Identity)
 		}
 	}
-	if count == 1 {
-		fmt.Fprintf(w, "Hint: register its update source: skillctl track --source SOURCE_URL %s\n", name)
+	if len(names) == 0 {
+		return
 	}
-	if count > 1 {
-		fmt.Fprintf(w, "Hint: %d skills have no update source; register one with: skillctl track --source SOURCE_URL SKILL_NAME\n", count)
+	slices.Sort(names)
+	if len(names) == 1 {
+		fmt.Fprintf(w, "Hint: %s has no update source, so updates cannot be checked.\n", names[0])
+		fmt.Fprintf(w, "  If it came from a repository:\n")
+		fmt.Fprintf(w, "    skillctl track %s --source REPOSITORY_URL\n", names[0])
+		fmt.Fprintf(w, "  If it was installed by an installer, recover the recorded source:\n")
+		fmt.Fprintf(w, "    skillctl track %s --from-history\n", names[0])
+		return
 	}
+	fmt.Fprintf(w, "Hint: %d skills have no update source: %s\n", len(names), previewNames(names))
+	fmt.Fprintf(w, "  Record one per skill, for example:\n")
+	fmt.Fprintf(w, "  skillctl track %s --source REPOSITORY_URL\n", names[0])
+	fmt.Fprintf(w, "  skillctl track %s --from-history recovers it from trusted installer records\n", names[0])
 }

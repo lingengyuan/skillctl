@@ -50,6 +50,19 @@ func projectDirectory(explicit string) string {
 	}
 }
 
+// extendedProjectPaths lists project-relative skill directories for Agents that
+// are discovered through configuration rather than agentHosts. Their user
+// path is ~/.<name>/skills, so the project path follows the same convention and
+// stays consistent with the Agent's own layout.
+var extendedProjectPaths = map[string]string{
+	"codebuddy":   ".codebuddy/skills",
+	"ghcp-appmod": ".ghcp-appmod/skills",
+	"kiro":        ".kiro/skills",
+	"qoder":       ".qoder/skills",
+	"trae":        ".trae/skills",
+	"trae-cn":     ".trae-cn/skills",
+}
+
 func projectRoots(project string) []scanRoot {
 	if project == "" {
 		return nil
@@ -71,6 +84,21 @@ func projectRoots(project string) []scanRoot {
 		for _, path := range paths {
 			roots = append(roots, scanRoot{Path: filepath.Join(project, filepath.FromSlash(path)), Host: host.Name, Scope: "project", Project: project})
 		}
+	}
+	// Extended Agents receive the same project-level support as the built-in
+	// ones, so --host works for a project install on every listed Agent.
+	names := make([]string, 0, len(extendedProjectPaths))
+	for name := range extendedProjectPaths {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		roots = append(roots, scanRoot{
+			Path:    filepath.Join(project, filepath.FromSlash(extendedProjectPaths[name])),
+			Host:    name,
+			Scope:   "project",
+			Project: project,
+		})
 	}
 	return roots
 }

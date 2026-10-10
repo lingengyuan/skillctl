@@ -367,7 +367,11 @@ func (index sourceSkillIndex) find(name string) (string, error) {
 		return "", fmt.Errorf("source does not contain skill %q", name)
 	}
 	if len(matches) > 1 {
-		return "", fmt.Errorf("source contains multiple skills named %q; use --skill-path", name)
+		// Name the candidates so the required --skill-path value is obvious
+		// instead of leaving the user to discover the paths themselves.
+		candidates := slices.Clone(matches)
+		slices.Sort(candidates)
+		return "", fmt.Errorf("source contains multiple skills named %q; use --skill-path with one of: %s", name, strings.Join(candidates, ", "))
 	}
 	return matches[0], nil
 }

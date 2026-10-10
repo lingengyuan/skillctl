@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/lingengyuan/skillctl/internal/cli"
@@ -16,6 +17,10 @@ type options struct {
 	cli.Options
 	allowInvalidState bool
 	version           string
+	// stdin and stderr let interactive prompts read a reply and show the menu
+	// while keeping machine-readable stdout untouched.
+	stdin  io.Reader
+	stderr io.Writer
 }
 
 func parseCommand(args []string, stderr io.Writer) (options, int) {
@@ -38,6 +43,11 @@ func Run(ctx context.Context, args []string, version string, stdout, stderr io.W
 		return 0
 	}
 	if args[0] == "--help" || args[0] == "help" {
+		// `skillctl help COMMAND` documents one command; a bare help request
+		// prints the full reference.
+		if args[0] == "help" && len(args) == 2 && cli.CommandUsage(stdout, args[1]) {
+			return 0
+		}
 		cli.Usage(stdout)
 		return 0
 	}
@@ -48,11 +58,15 @@ func Run(ctx context.Context, args []string, version string, stdout, stderr io.W
 	}
 	opt, code := parseCommand(args[1:], stderr)
 	opt.version = version
+	opt.stdin = os.Stdin
+	opt.stderr = stderr
 	if code != 0 {
 		return code
 	}
 	if opt.Help {
-		cli.Usage(stdout)
+		if !cli.CommandUsage(stdout, command) {
+			cli.Usage(stdout)
+		}
 		return 0
 	}
 	if err := validateOptions(command, opt); err != nil {

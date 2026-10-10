@@ -51,7 +51,11 @@ func newSourceSession(ctx context.Context, networkTimeout time.Duration, progres
 // All source consumers use the same object-cache adapter.
 var syncSourceForSession = gitstore.SyncObject
 
-const maxConcurrentSourceChecks = 4
+// maxConcurrentSourceChecks bounds how many sources are synced at once. Each
+// sync is network-bound (a git fetch per source), so a low limit dominates the
+// total time: 9 sources at 4-way concurrency need three sequential rounds. The
+// limit keeps parallelism reasonable for a CLI without saturating the network.
+const maxConcurrentSourceChecks = 8
 
 type sourceRequest struct {
 	Source string

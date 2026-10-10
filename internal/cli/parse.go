@@ -40,6 +40,14 @@ func Parse(args []string, stderr io.Writer) (Options, int) {
 			opt.FromHistory = true
 		case "--verbose", "-v":
 			opt.Verbose = true
+		case "--quiet", "-q":
+			opt.Quiet = true
+		case "--strict":
+			opt.Strict = true
+		case "--reinstall":
+			opt.Reinstall = true
+		case "--yes", "-y":
+			opt.Yes = true
 		case "--no-history":
 			opt.NoHistory = true
 		case "--copy":
@@ -144,6 +152,12 @@ func Validate(command string, opt Options) error {
 	}
 	if opt.Fix && command != "doctor" {
 		return fmt.Errorf("--fix is only valid with doctor")
+	}
+	if opt.Reinstall && command != "doctor" {
+		return fmt.Errorf("--reinstall is only valid with doctor")
+	}
+	if opt.Reinstall && !opt.Fix {
+		return fmt.Errorf("--reinstall requires --fix")
 	}
 	if opt.FromHistory && command != "track" {
 		return fmt.Errorf("--from-history is only valid with track")

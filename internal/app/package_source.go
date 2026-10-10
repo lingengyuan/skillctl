@@ -85,6 +85,34 @@ func parseSource(value, ref, skillPath string) (sourceSpec, error) {
 	return sourceSpec{Kind: kind, URL: value, Ref: ref, SkillPath: skillPath}, nil
 }
 
+// splitInlineSkill separates a trailing @skill selector from a source
+// reference, so `owner/repo@skill` selects one skill without --skill.
+//
+// Only shorthand and plain path references are split. A remote URL may contain
+// "@" in userinfo or credentials, and an SSH reference starts with `git@`, so
+// those are returned unchanged to avoid mangling a valid source.
+func splitInlineSkill(value string) (string, string) {
+	if value == "" || strings.HasPrefix(value, "git@") || strings.Contains(value, "://") {
+		return value, ""
+	}
+	at := strings.LastIndex(value, "@")
+	if at <= 0 || at == len(value)-1 {
+		return value, ""
+	}
+	source, skill := value[:at], value[at+1:]
+	// A selector cannot contain path separators; anything else is part of the
+	// source itself.
+	if strings.ContainsAny(skill, "/\\") {
+		return value, ""
+	}
+	// Require a recognizable source shape so an ordinary local path containing
+	// "@" is not reinterpreted.
+	if !strings.Contains(source, "/") && !strings.HasPrefix(source, ".") {
+		return value, ""
+	}
+	return source, skill
+}
+
 func preparePackages(ctx context.Context, source sourceSpec, names []string, offline bool) ([]preparedPackage, func(), error) {
 	cleanup := func() {}
 	if err := validateSourceURL(source.URL); err != nil {

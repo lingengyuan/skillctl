@@ -24,6 +24,10 @@ type Options struct {
 	CommandTimeout  time.Duration
 	RecoveryTimeout time.Duration
 	Verbose         bool
+	Quiet           bool
+	Strict          bool
+	Reinstall       bool
+	Yes             bool
 	JSONVersion     int
 	Project         string
 	Skills          []string
