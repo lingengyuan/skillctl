@@ -1,6 +1,6 @@
 # skillctl
 
-管理 Codex、Claude Code、Cursor、Copilot、Gemini 和 OpenCode 的 Skills，统一查看安装、追踪来源、检查更新、分发和恢复。
+管理 Codex、Claude Code、Cursor、Copilot、Gemini、OpenCode、Trae、Kiro、Qoder 等 Agent 的 Skills，统一查看安装、追踪来源、检查更新、分发和恢复。完整列表见 `skillctl config hosts`。
 
 ## 安装
 
@@ -19,7 +19,7 @@ Invoke-WebRequest https://raw.githubusercontent.com/lingengyuan/skillctl/main/sc
 .\install.ps1
 ```
 
-脚本安装最新正式版，重新运行即可升级；指定版本使用 `--version v0.0.5`（PowerShell：`-Version v0.0.5`）。安装包见 [Releases](https://github.com/lingengyuan/skillctl/releases)。Git 来源需要 Git。
+脚本安装最新正式版，重新运行即可升级；指定版本使用 `--version v0.4.1`（PowerShell：`-Version v0.4.1`）。安装包见 [Releases](https://github.com/lingengyuan/skillctl/releases)。Git 来源需要 Git。
 
 ## 使用
 
@@ -34,6 +34,24 @@ skillctl update my-skill
 
 本地目录须包含有效的 `SKILL.md`。安装默认全局生效，`--project PATH` 指定项目；同名安装用 ID、`--host` 或 `--path` 区分。
 
+未提供 `--host` 时使用检测到的 Agent。一个也没检测到时，交互式终端会列出全部可安装目标供选择；管道或 CI 等非交互环境直接失败并列出可用名称，不会等待输入。
+
+安装来源可以直接带上要选用的 Skill：`owner/repo@skill` 等价于 `--skill skill`。省略 `--skill` 会安装来源中的全部有效 Skill，因此数量较大时会先确认；`--yes` 跳过确认，非交互环境在没有 `--skill` 或 `--yes` 时直接失败而不是静默安装。
+
+```sh
+skillctl install mattpocock/skills@tdd --host claude   # 只装 tdd
+skillctl install owner/repo --host claude --yes        # 明确接受全部
+```
+
+来源内同名 Skill 冲突时，错误会列出全部候选路径供 `--skill-path` 使用。
+
+每个命令都有独立帮助：
+
+```sh
+skillctl install --help
+skillctl help install
+```
+
 | 操作 | 命令 |
 |---|---|
 | 查看详情 | `skillctl show NAME` |
@@ -42,6 +60,10 @@ skillctl update my-skill
 | 移除使用关系 | `skillctl remove NAME` |
 | 查看历史 / 回退 | `skillctl history` / `skillctl rollback latest` |
 | 诊断 / 修复 | `skillctl doctor` / `skillctl doctor --fix` |
+
+`doctor --fix` 会清理指向已删除内容的悬空链接和过期来源记录；目标父目录也缺失时保留链接并给出警告，避免误删外置卷上的配置。内容被删除后仍可用 `remove` 移除绑定并重新安装。
+
+`list` 按查询语义返回 0，即使存在损坏条目；`--strict` 可让这类条目导致失败。`doctor --quiet` 隐藏 INFO 级输出。
 
 现有安装沿用原管理方式；宿主插件通过 `--package` 操作整个包。远端更新要求来源可验证。新安装使用共享存储，更新影响所有活动使用关系，同一物理路径不能只对其中一个 Agent 停用。
 

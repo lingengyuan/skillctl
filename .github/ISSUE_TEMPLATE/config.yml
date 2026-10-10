@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全问题
+    url: https://github.com/lingengyuan/skillctl/security/advisories/new
+    about: 请通过私密漏洞报告提交，不要开公开 issue。
+  - name: 使用问题
+    url: https://github.com/lingengyuan/skillctl/blob/main/docs/commands.md
+    about: 命令、参数与行为边界见命令参考；用法疑问优先查阅文档。

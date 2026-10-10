@@ -1,0 +1,67 @@
+name: Bug report
+description: 报告可复现的缺陷
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        安全问题请不要在此报告，见 [SECURITY.md](../blob/main/SECURITY.md)。
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 输出 `skillctl version`
+      placeholder: skillctl 0.4.1
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: 平台
+      placeholder: macOS 15 arm64 / Ubuntu 24.04 amd64 / Windows 11
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: 安装方式
+      description: 安装脚本、`go install`，或其他方式
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: 执行的命令
+      description: 原样粘贴。含凭据的地址请先改写。
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 完整输出；机器可读场景请优先附 `--json-version 2` 的结果
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断输出
+      description: 输出 `skillctl doctor`。本地路径可直接保留。
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: 补充说明
+      description: 是否可稳定复现、最近是否改动过配置或安装了新的 Skill
+    validations:
+      required: false
