@@ -172,17 +172,34 @@ func runManager(ctx context.Context, command string, opt options, stdout, stderr
 		if len(opt.Names) != 1 {
 			return fail(fmt.Errorf("install requires one source; select its skills with --skill"))
 		}
-		source, err := parseSource(opt.Names[0], opt.Ref, opt.SkillPath)
+		// An inline @skill selects one skill from the source, so a search
+		// result can be pasted without looking up the right flags.
+		reference, inlineSkill := splitInlineSkill(opt.Names[0])
+		skills := opt.Skills
+		named := len(opt.Skills) > 0
+		if inlineSkill != "" {
+			if len(skills) == 0 {
+				skills = []string{inlineSkill}
+			}
+			named = true
+		}
+		source, err := parseSource(reference, opt.Ref, opt.SkillPath)
 		if err != nil {
 			return fail(err)
 		}
 		opctx, cancel := context.WithTimeout(ctx, view.timeout)
 		defer cancel()
-		packages, cleanup, err := preparePackages(opctx, source, opt.Skills, opt.Offline)
+		packages, cleanup, err := preparePackages(opctx, source, skills, opt.Offline)
 		if err != nil {
 			return fail(err)
 		}
 		defer cleanup()
+		// Installing every skill in a large source is easy to trigger by
+		// omitting --skill, and undoing it means removing each one. Confirm the
+		// count first unless the caller selected skills or asked not to prompt.
+		if err := confirmBulkInstall(packages, opt, named, stdout, stderr); err != nil {
+			return fail(err)
+		}
 		plan := &lifecyclePlan{Command: command, Affected: []string{}, Changes: []plannedChange{}}
 		for _, pkg := range packages {
 			bindings, err := targetBindings(opt, view.roots, pkg.Name)
@@ -210,13 +227,17 @@ func runManager(ctx context.Context, command string, opt options, stdout, stderr
 	result := commandResult{Command: command, Items: selected, Diagnostics: view.Diagnostics}
 	if command == "list" {
 		if opt.JSONVersion == 2 {
-			return outputResult(result, opt, stdout, stderr, view.scanFailed)
+			return outputResult(result, opt, stdout, stderr, view.scanFailed && opt.Strict)
 		}
 		items := skillsForAssets(view, selected, true)
 		if err := writeSkillList(stdout, items, opt.JSON); err != nil {
 			return fail(err)
 		}
-		if view.scanFailed {
+		// Listing is a query: it succeeded if it reported what exists, even
+		// when existing entries are broken or invalid. Those entries stay
+		// visible in the output, and --strict restores failure exit codes for
+		// CI checks that treat any local problem as an error.
+		if view.scanFailed && opt.Strict {
 			return 1
 		}
 		return 0
@@ -225,18 +246,21 @@ func runManager(ctx context.Context, command string, opt options, stdout, stderr
 		return outputResult(result, opt, stdout, stderr, view.scanFailed)
 	}
 	if command == "doctor" {
-		findings, fixed, failed := diagnose(view.roots, view.skills, view.state, view.stateErr, opt.Fix && !opt.DryRun)
+		findings, fixed, failed := diagnose(view, view.skills, view.state, view.stateErr, opt.Fix && !opt.DryRun, opt.Reinstall && !opt.DryRun, opt)
+		// A scan failure only gates the exit code when it was not repaired:
+		// `diagnose` already removed what it could fix, and its `failed` flag
+		// reports what remains.
 		if opt.JSONVersion == 2 {
 			result.Result = struct {
 				Findings []doctorFinding `json:"findings"`
 				Fixed    int             `json:"fixed"`
 			}{findings, fixed}
-			return outputResult(result, opt, stdout, stderr, failed || view.scanFailed)
+			return outputResult(result, opt, stdout, stderr, failed)
 		}
-		if err := writeDoctorReport(stdout, findings, fixed, opt.JSON); err != nil {
+		if err := writeDoctorReport(stdout, findings, fixed, opt.JSON, opt.Quiet); err != nil {
 			return fail(err)
 		}
-		if failed || view.scanFailed {
+		if failed {
 			return 1
 		}
 		return 0
@@ -325,7 +349,7 @@ func outputResult(result commandResult, opt options, stdout, stderr io.Writer, f
 		}
 	} else {
 		for _, asset := range result.Items {
-			fmt.Fprintf(stdout, "%s [%s] %s (%s)\n  %s\n", asset.Name, asset.ID, asset.State, asset.Provider, asset.Path)
+			fmt.Fprintf(stdout, "%s [%s] %s (%s)\n  %s\n", asset.Name, asset.ID, statusLabel(asset.State, asset.ReasonCode), asset.Provider, asset.Path)
 			if result.Command == "show" {
 				if asset.Source != nil {
 					fmt.Fprintf(stdout, "  Source: %s %s (%s)\n", asset.Source.URL, asset.Source.SkillPath, asset.Revision)

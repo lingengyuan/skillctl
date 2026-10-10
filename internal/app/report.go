@@ -444,3 +444,14 @@ func (s *reportSink) set(items []skill, message, state, reason string, available
 		}
 	}
 }
+
+// statusLabel renders the state shown to a person. "unknown" only means the
+// source has not been checked yet, which is the normal state right after an
+// install, so it is described instead of being printed as a bare state that
+// reads like a failure.
+func statusLabel(state, reason string) string {
+	if state == "unknown" && reason == "not_checked" {
+		return "installed (source not checked)"
+	}
+	return state
+}

@@ -38,13 +38,15 @@ func TestSharedSkillKeepsEveryHostAndScope(t *testing.T) {
 	}
 }
 
+// Listing is a query: invalid entries must still be reported, and the exit
+// code must stay successful unless --strict is requested.
 func TestInvalidSkillRemainsInJSON(t *testing.T) {
 	base := setTestHome(t)
 	root := filepath.Join(base, "skills")
 	writeTestSkill(t, filepath.Join(root, "broken"), "Bad_Name", "invalid")
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"list", "--json", "--path", root}, &stdout, &stderr); code != 1 {
-		t.Fatalf("exit=%d stderr=%s", code, &stderr)
+	if code := run([]string{"list", "--json", "--path", root}, &stdout, &stderr); code != 0 {
+		t.Fatalf("query exit=%d stderr=%s", code, &stderr)
 	}
 	var result struct {
 		Items []skillListEntry `json:"items"`
@@ -54,6 +56,12 @@ func TestInvalidSkillRemainsInJSON(t *testing.T) {
 	}
 	if len(result.Items) != 1 || result.Items[0].ReasonCode != "invalid_skill" || result.Items[0].Error == "" {
 		t.Fatalf("invalid item omitted: %#v", result)
+	}
+
+	// The same listing must fail under --strict so CI can gate on it.
+	stdout.Reset()
+	if code := run([]string{"list", "--json", "--strict", "--path", root}, &stdout, &stderr); code != 1 {
+		t.Fatalf("strict exit=%d, want 1", code)
 	}
 }
 

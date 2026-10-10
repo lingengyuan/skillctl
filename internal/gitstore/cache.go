@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -367,4 +368,37 @@ func isCommitRef(ref string) bool {
 		}
 	}
 	return true
+}
+
+// StaleCloneDirectories lists unfinished source clone stages. Each clone is
+// staged in a temporary directory and published with a rename, so a directory
+// that still exists means the process was interrupted before publishing. Only
+// stages older than minAge are returned, so a concurrent clone is never
+// reclaimed while it is still being written.
+func StaleCloneDirectories(minAge time.Duration) ([]string, error) {
+	base, err := sourceCacheDirectory()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(base)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	cutoff := time.Now().Add(-minAge)
+	var stale []string
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".skillctl-source-clone-") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().After(cutoff) {
+			continue
+		}
+		stale = append(stale, filepath.Join(base, entry.Name()))
+	}
+	slices.Sort(stale)
+	return stale, nil
 }

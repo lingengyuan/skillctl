@@ -104,7 +104,7 @@ func TestDoctorFixRemovesStaleTrackedEntry(t *testing.T) {
 		path:    filepath.Join(dir, "sources.json"),
 		Skills:  []trackedEntry{{Path: filepath.Join(dir, "missing"), Source: "repo", SkillPath: "skill"}},
 	}
-	findings, fixed, failed := diagnose(nil, nil, state, nil, true)
+	findings, fixed, failed := diagnose(&inventoryView{}, nil, state, nil, true, false, options{})
 	if failed || fixed != 1 || len(state.Skills) != 0 {
 		t.Fatalf("failed=%v fixed=%d state=%#v findings=%#v", failed, fixed, state, findings)
 	}
@@ -129,7 +129,7 @@ func TestDoctorFixDoesNotReportItsOwnOperationLock(t *testing.T) {
 	}
 	defer lock.release()
 
-	findings, _, _ := diagnose(nil, nil, nil, nil, true)
+	findings, _, _ := diagnose(&inventoryView{}, nil, nil, nil, true, false, options{})
 	for _, finding := range findings {
 		if finding.Code == "active_operation_lock" {
 			t.Fatalf("doctor --fix reported its own lock: %#v", findings)

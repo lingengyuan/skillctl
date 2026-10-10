@@ -404,7 +404,19 @@ func assetCapabilities(asset skillAsset) map[string]capability {
 	for _, command := range []string{"check", "diff", "update", "enable", "disable", "remove", "pin", "rollback"} {
 		result[command] = capability{Supported: false, Reason: "operation is unavailable for this owner", Unit: "content"}
 	}
-	if asset.State == "invalid" || asset.State == "ambiguous" || asset.State == "broken" || asset.State == "error" || asset.State == "blocked" {
+	if asset.State == "invalid" || asset.State == "ambiguous" || asset.State == "error" || asset.State == "blocked" {
+		return result
+	}
+	if asset.State == "broken" {
+		// Broken content cannot be updated or enabled, but the bindings are
+		// still recorded state. Removing them must stay available, otherwise a
+		// skill whose content disappeared could never be cleaned up.
+		switch asset.Provider {
+		case "skillctl-store", "local-authoring", "external-local", "skillctl-track-v1":
+			result["remove"] = capability{Supported: true, Unit: "content"}
+		case "git-worktree", "vercel-skills-lock-v3", "gh-skill":
+			result["remove"] = capability{Supported: true, Unit: "binding"}
+		}
 		return result
 	}
 	result["check"] = capability{Supported: true, Unit: "content"}

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +24,10 @@ type doctorFinding struct {
 	Skill   string `json:"skill,omitempty"`
 }
 
-func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr error, fix bool) ([]doctorFinding, int, bool) {
+// diagnose inspects local state and, when fix is set, repairs what it can
+// verify. With reinstall, skills whose recorded source is known are installed
+// again instead of only having their dangling links removed.
+func diagnose(view *inventoryView, skills []skill, state *trackedState, stateErr error, fix, reinstall bool, repairOptions options) ([]doctorFinding, int, bool) {
 	var findings []doctorFinding
 	failed := false
 	fixed := 0
@@ -34,7 +38,7 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 		}
 	}
 
-	for _, root := range roots {
+	for _, root := range view.roots {
 		if _, err := os.Stat(root.Path); err != nil {
 			if errors.Is(err, os.ErrNotExist) && !root.Required {
 				add("info", "optional_root_missing", "optional skill root is not present", root.Path, "")
@@ -56,14 +60,56 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 		}
 	}
 	byName := map[string][]skill{}
+	var brokenLinks []skill
 	for _, item := range skills {
 		byName[item.Name] = append(byName[item.Name], item)
 		if item.Broken {
-			add("error", "broken_link", "skill link target is unavailable: "+item.LinkTarget, item.Path, item.Name)
+			brokenLinks = append(brokenLinks, item)
 		}
 		if item.Invalid != "" {
 			add("error", item.IssueCode, item.Invalid, item.Path, item.Name)
 		}
+	}
+	// Reinstall must resolve sources before links disappear, and it also covers
+	// recorded packages whose content vanished, which leave no link behind.
+	if fix && reinstall {
+		outcome := reinstallRecoveredSkills(context.Background(), repairOptions, view,
+			collectRecoverySources(brokenLinks, view, state))
+		fixed += len(outcome.Recovered)
+		for _, name := range outcome.Recovered {
+			add("fixed", "skill_reinstalled", name+" reinstalled from "+outcome.Descriptions[name], "", name)
+		}
+		for _, name := range outcome.Ambiguous {
+			add("warning", "reinstall_source_ambiguous", name+": several recorded sources conflict; reinstall it explicitly", "", name)
+		}
+		for _, name := range outcome.NoSource {
+			add("warning", "reinstall_source_missing", name+": no recorded source; install it explicitly", "", name)
+		}
+		for _, failure := range outcome.Failed {
+			add("warning", "reinstall_failed", failure, "", "")
+		}
+	}
+	// Repair dangling links before reporting them, so a repair that succeeds
+	// does not leave the command failing on problems it just fixed.
+	repairedLinks := map[string]bool{}
+	var heldLinkNotes []string
+	if fix && len(brokenLinks) > 0 {
+		plan := planDanglingLinks(brokenLinks)
+		removed, err := applyDanglingLinkPlan(plan)
+		if err != nil {
+			add("error", "broken_link_fix_failed", oneLine(err.Error()), "", "")
+		}
+		if removed > 0 {
+			fixed += removed
+			repairedLinks = plan.repaired
+		}
+		heldLinkNotes = plan.held
+	}
+	// One finding per distinct link. Scanning several roots can observe the
+	// same dangling link more than once, and repeating it buries real problems.
+	reportDanglingLinks(&add, brokenLinks, repairedLinks)
+	for _, held := range heldLinkNotes {
+		add("warning", "broken_link_kept", held+"; run doctor --fix after the volume is available", "", "")
 	}
 	names := slices.Sorted(maps.Keys(byName))
 	for _, name := range names {
@@ -163,7 +209,10 @@ func diagnose(roots []scanRoot, skills []skill, state *trackedState, stateErr er
 	return findings, fixed, failed
 }
 
-func writeDoctorReport(w io.Writer, findings []doctorFinding, fixed int, asJSON bool) error {
+// writeDoctorReport renders findings for humans. Missing optional roots are
+// summarized because every machine lacks most Agents, and --quiet hides
+// informational levels entirely.
+func writeDoctorReport(w io.Writer, findings []doctorFinding, fixed int, asJSON, quiet bool) error {
 	if asJSON {
 		return json.NewEncoder(w).Encode(struct {
 			SchemaVersion int             `json:"schemaVersion"`
@@ -171,7 +220,22 @@ func writeDoctorReport(w io.Writer, findings []doctorFinding, fixed int, asJSON 
 			Findings      []doctorFinding `json:"findings"`
 		}{SchemaVersion: 1, Fixed: fixed, Findings: findings})
 	}
+	// Missing optional roots are expected on any machine that does not use
+	// every supported Agent. Reporting each one buries the findings that need
+	// action, so they are summarized and the detail stays in JSON output.
+	var optionalRoots []string
+	var reported []doctorFinding
 	for _, finding := range findings {
+		if finding.Code == "optional_root_missing" {
+			optionalRoots = append(optionalRoots, finding.Path)
+			continue
+		}
+		reported = append(reported, finding)
+	}
+	for _, finding := range reported {
+		if quiet && (finding.Level == "info" || finding.Level == "ok") {
+			continue
+		}
 		context := ""
 		if finding.Skill != "" {
 			context += " skill=" + finding.Skill
@@ -180,6 +244,11 @@ func writeDoctorReport(w io.Writer, findings []doctorFinding, fixed int, asJSON 
 			context += " path=" + finding.Path
 		}
 		if _, err := fmt.Fprintf(w, "%s %s:%s %s\n", strings.ToUpper(finding.Level), finding.Code, context, finding.Message); err != nil {
+			return err
+		}
+	}
+	if len(optionalRoots) > 0 && !quiet {
+		if _, err := fmt.Fprintf(w, "INFO optional_root_missing: %d optional skill root(s) not present\n", len(optionalRoots)); err != nil {
 			return err
 		}
 	}

@@ -12,10 +12,66 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/BurntSushi/toml"
+
+	"github.com/lingengyuan/skillctl/internal/cli"
 	"github.com/lingengyuan/skillctl/internal/fsutil"
+	"github.com/lingengyuan/skillctl/internal/gitstore"
 	"github.com/lingengyuan/skillctl/internal/skilldoc"
 )
+
+// installedHostRows lists every Agent a --host flag can target for the user
+// scope, derived from the built-in defaults plus the default discovery
+// configuration. Without this, extended Agents that install fine stayed
+// invisible in `config hosts`. Project paths come from projectRoots so a
+// project install works for every Agent the user-scope list accepts.
+func installedHostRows() []agentHost {
+	rows := slices.Clone(agentHosts())
+	seen := map[string]bool{}
+	for _, row := range rows {
+		seen[row.Name] = true
+	}
+	var cfg config
+	if _, err := toml.Decode(defaultConfig, &cfg); err != nil {
+		return rows
+	}
+	projectPaths := projectPathByHost()
+	for _, root := range cfg.Roots {
+		name := cli.NormalizeHost(root.Host)
+		// "universal" is the shared-directory alias, not a selectable target:
+		// it maps to more than one root, so --host universal is rejected.
+		if name == "" || name == "universal" || seen[name] || root.Scope != "user" {
+			continue
+		}
+		seen[name] = true
+		rows = append(rows, agentHost{Name: name, UserPath: resolvePath(root.Path, "."), ProjectPath: projectPaths[name]})
+	}
+	slices.SortFunc(rows, func(a, b agentHost) int { return strings.Compare(a.Name, b.Name) })
+	return rows
+}
+
+// projectPathByHost maps each Agent to the project-relative directory it reads,
+// taken from the same source that builds project roots.
+func projectPathByHost() map[string]string {
+	result := map[string]string{}
+	for _, root := range projectRoots("placeholder") {
+		relative, err := filepath.Rel("placeholder", root.Path)
+		if err != nil || strings.HasPrefix(relative, "..") {
+			continue
+		}
+		// The first path listed for a host is its primary project directory.
+		if _, ok := result[root.Host]; !ok {
+			result[root.Host] = filepath.ToSlash(relative)
+		}
+	}
+	return result
+}
+
+// staleCloneAge is how long an unfinished clone stage must be idle before gc
+// reclaims it. A smaller window risks deleting a clone that is still running.
+const staleCloneAge = 24 * time.Hour
 
 func runConfig(_ context.Context, opt options, stdout, stderr io.Writer) int {
 	fail := func(err error) int {
@@ -44,10 +100,15 @@ func runConfig(_ context.Context, opt options, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, path)
 		return 0
 	case "hosts":
+		// Report every installable Agent, not only the built-in defaults.
+		// agentHosts() covers the six canonical ones while the default
+		// configuration adds shared and extended Agents such as trae, kiro,
+		// and qoder. Listing both keeps this output aligned with --host.
+		hosts := installedHostRows()
 		if opt.JSON {
-			return outputResult(commandResult{Command: "config", Result: agentHosts()}, opt, stdout, stderr, false)
+			return outputResult(commandResult{Command: "config", Result: hosts}, opt, stdout, stderr, false)
 		}
-		for _, host := range agentHosts() {
+		for _, host := range hosts {
 			fmt.Fprintf(stdout, "%s\t%s\t%s\n", host.Name, host.UserPath, host.ProjectPath)
 		}
 		return 0
@@ -81,6 +142,21 @@ func runConfig(_ context.Context, opt options, stdout, stderr io.Writer) int {
 		plan, err := garbageCollectionPlan()
 		if err != nil {
 			return fail(err)
+		}
+		// An interrupted clone leaves its staging directory behind, because the
+		// cleanup that normally removes it cannot run once the process is gone.
+		stale, err := gitstore.StaleCloneDirectories(staleCloneAge)
+		if err != nil {
+			return fail(err)
+		}
+		for _, path := range stale {
+			change, err := mutation(path, "remove")
+			if err != nil {
+				return fail(err)
+			}
+			if err := plan.add(change); err != nil {
+				return fail(err)
+			}
 		}
 		return executePlan(plan, nil, opt, stdout, stderr)
 	default:
@@ -250,6 +326,10 @@ func runSearch(ctx context.Context, opt options, stdout, stderr io.Writer) int {
 	}
 	if len(results) == 0 {
 		fmt.Fprintln(stdout, "No matching skills found.")
+	} else {
+		// Search results are a starting point, not an install. Show the exact
+		// command so the result can be acted on without guessing the flags.
+		fmt.Fprintf(stdout, "\nInstall one with:\n  skillctl install %s --skill %s\n", results[0].Source, results[0].Name)
 	}
 	return 0
 }

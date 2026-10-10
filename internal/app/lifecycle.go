@@ -80,32 +80,32 @@ func targetBindings(opt options, roots []scanRoot, name string) ([]skillBinding,
 	if err != nil {
 		return nil, err
 	}
-	hosts := slices.Clone(opt.Hosts)
-	if len(hosts) == 0 {
-		for _, host := range agentHosts() {
-			detectionPath := filepath.Dir(host.UserPath)
-			if host.Name == "codex" {
-				detectionPath = codexHomePath()
-			}
-			if _, err := os.Stat(detectionPath); err == nil {
-				hosts = append(hosts, host.Name)
-			}
-		}
-		if len(hosts) == 0 {
-			return nil, fmt.Errorf("no Agent detected; choose one with --host")
-		}
-	}
-	var result []skillBinding
 	project := ""
 	if scope == "project" {
 		project = projectDirectory(opt.Project)
 	}
+	hosts, err := resolveInstallHosts(opt, roots, scope, project)
+	if err != nil {
+		return nil, err
+	}
+	var result []skillBinding
 	for _, host := range hosts {
+		// Only directories that hold skills can be install targets. Recorded
+		// installs also contribute discovery roots pointing at individual
+		// skills (for example ~/.kiro/skills/tdd), and counting those as
+		// candidates makes every Agent with existing installs look ambiguous.
 		var candidates []scanRoot
 		for _, root := range roots {
-			if root.Host == host && root.Scope == scope && (scope != "project" || root.Project == "" || fsutil.SamePath(root.Project, project)) {
-				candidates = append(candidates, root)
+			if root.Host != host || root.Scope != scope {
+				continue
 			}
+			if scope == "project" && root.Project != "" && !fsutil.SamePath(root.Project, project) {
+				continue
+			}
+			if !isAgentRootDirectory(root.Path) {
+				continue
+			}
+			candidates = append(candidates, root)
 		}
 		preferred := ""
 		for _, known := range agentHosts() {
@@ -116,6 +116,12 @@ func targetBindings(opt options, roots []scanRoot, name string) ([]skillBinding,
 				}
 				break
 			}
+		}
+		// An explicit configuration may place the Agent somewhere other than
+		// the built-in location, so a single configured root still counts even
+		// when its directory does not exist yet.
+		if preferred == "" && len(candidates) == 1 {
+			preferred = candidates[0].Path
 		}
 		var root string
 		for _, candidate := range candidates {
@@ -144,6 +150,9 @@ func targetBindings(opt options, roots []scanRoot, name string) ([]skillBinding,
 		result = append(result, skillBinding{Path: path, Host: host, Scope: scope, Project: project, Enabled: true, Mode: mode})
 		// Expose implicit consumers of shared directories in the plan too.
 		for _, candidate := range roots {
+			if !isAgentRootDirectory(candidate.Path) {
+				continue
+			}
 			if fsutil.SamePath(candidate.Path, root) && candidate.Host != host && candidate.Scope == scope {
 				binding := skillBinding{Path: path, Host: candidate.Host, Scope: scope, Project: project, Enabled: true, Mode: mode}
 				if !slices.Contains(result, binding) {
@@ -153,6 +162,23 @@ func targetBindings(opt options, roots []scanRoot, name string) ([]skillBinding,
 		}
 	}
 	return slices.CompactFunc(result, func(a, b skillBinding) bool { return a == b }), nil
+}
+
+// isAgentRootDirectory reports whether path is a directory that holds skills
+// rather than one skill itself. Recorded installs contribute discovery roots
+// that point straight at a skill (for example ~/.kiro/skills/tdd); those must
+// not be treated as install targets, or every Agent with existing installs
+// looks ambiguous.
+func isAgentRootDirectory(path string) bool {
+	if path == "" {
+		return false
+	}
+	// A skill directory is identified by its SKILL.md, which is also what the
+	// scanner requires.
+	if _, err := os.Stat(filepath.Join(path, "SKILL.md")); err == nil {
+		return false
+	}
+	return true
 }
 
 func directoryLinksAvailable() bool {
@@ -352,6 +378,7 @@ func registerExternal(catalog *packageCatalog, asset skillAsset) (*managedPackag
 
 func planBindingChange(command string, view *inventoryView, selected []skillAsset, opt options) (*lifecyclePlan, error) {
 	plan := &lifecyclePlan{Command: command, Affected: []string{}, Changes: []plannedChange{}}
+	var orphans []string
 	seen := map[string]bool{}
 	removedInstallations := []skill{}
 	for _, asset := range selected {
@@ -374,8 +401,13 @@ func planBindingChange(command string, view *inventoryView, selected []skillAsse
 			continue
 		}
 		seen[pkg.ID] = true
-		if err := verifyPackageUnmodified(*pkg); err != nil {
-			return nil, err
+		// Removing bindings must succeed even when the content is already gone:
+		// that is exactly the situation a user needs to clean up. Every other
+		// command still verifies content so nothing unverified is overwritten.
+		if command != "remove" {
+			if err := verifyPackageUnmodified(*pkg); err != nil {
+				return nil, err
+			}
 		}
 		if command == "pin" || command == "unpin" {
 			if command == "pin" && opt.Ref != "" && opt.Ref != pkg.Revision {
@@ -491,7 +523,19 @@ func planBindingChange(command string, view *inventoryView, selected []skillAsse
 				}
 			}
 			pkg.Bindings = slices.DeleteFunc(pkg.Bindings, func(binding managedBinding) bool { return bindingMatches(binding.skillBinding, opt) })
+			// A package with no bindings left is no longer used by anything.
+			// Keeping the row makes a later install of the same skill read a
+			// directory that no longer exists, so drop it here. Shared content
+			// is reclaimed by config gc, not by this removal.
+			if len(pkg.Bindings) == 0 {
+				orphans = append(orphans, pkg.ID)
+			}
 		}
+	}
+	if len(orphans) > 0 {
+		view.catalog.Packages = slices.DeleteFunc(view.catalog.Packages, func(pkg managedPackage) bool {
+			return slices.Contains(orphans, pkg.ID)
+		})
 	}
 	if command == "remove" {
 		if err := planRemovedProviderRecords(plan, view, removedInstallations); err != nil {
