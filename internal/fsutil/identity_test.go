@@ -36,9 +36,11 @@ func TestWithin(t *testing.T) {
 // PathKey must clean the path and fold case only where the platform does, so
 // distinct paths are never merged on a case-sensitive filesystem.
 func TestPathKeyFolding(t *testing.T) {
-	got := PathKey("/A/B/../C")
-	if got != "/A/C" {
-		t.Fatalf("path was not cleaned: %q", got)
+	// Build the expectation with the platform separator: Windows cleans to
+	// `\a\c`, so a literal slash comparison would only pass on Unix.
+	want := filepath.Join(string(filepath.Separator), "A", "C")
+	if got := PathKey("/A/B/../C"); got != want {
+		t.Fatalf("path was not cleaned: got %q want %q", got, want)
 	}
 	if runtime.GOOS != "windows" && PathKey("/A") == PathKey("/a") {
 		t.Fatal("case was folded on a case-sensitive platform")

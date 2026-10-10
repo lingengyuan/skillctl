@@ -63,14 +63,13 @@ func TestValidWorktreeRejectsUnusableCaches(t *testing.T) {
 // Only interrupted clone stages are stale. A fresh stage may belong to a
 // running process and must be kept.
 func TestStaleCloneDirectoriesRespectsAge(t *testing.T) {
-	cacheHome := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cacheHome)
-	t.Setenv("HOME", cacheHome)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
+	t.Setenv("USERPROFILE", home)
 
-	base, err := sourceCacheDirectory()
-	if err != nil {
-		t.Fatal(err)
-	}
+	base := mustCacheDirectory(t)
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -108,9 +107,19 @@ func TestStaleCloneDirectoriesRespectsAge(t *testing.T) {
 // An absent cache directory is not an error: a machine that never cloned
 // anything must simply report nothing.
 func TestStaleCloneDirectoriesWithoutCache(t *testing.T) {
-	cacheHome := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cacheHome)
-	t.Setenv("HOME", cacheHome)
+	// The cache location differs per platform, so redirect every variable the
+	// resolver consults. Without this the test would read the developer's real
+	// cache and could observe unrelated directories.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
+	t.Setenv("USERPROFILE", home)
+
+	// Nothing was ever cloned, so the directory does not exist yet.
+	if _, err := os.Stat(mustCacheDirectory(t)); !os.IsNotExist(err) {
+		t.Skipf("cache directory already exists: %v", err)
+	}
 
 	stale, err := StaleCloneDirectories(time.Second)
 	if err != nil {
@@ -119,4 +128,14 @@ func TestStaleCloneDirectoriesWithoutCache(t *testing.T) {
 	if len(stale) != 0 {
 		t.Fatalf("unexpected results: %v", stale)
 	}
+}
+
+// mustCacheDirectory returns the resolved source cache directory.
+func mustCacheDirectory(t *testing.T) string {
+	t.Helper()
+	dir, err := sourceCacheDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
