@@ -55,6 +55,23 @@ jobs:
             $errors | ForEach-Object { Write-Error $_.Message }
             throw "PowerShell installer has syntax errors"
           }
+      # The release job packs on Linux so tar records the executable bit, which
+      # makes the build script a cross-platform script. Validate it on every OS
+      # rather than only where it used to run.
+      - name: Check PowerShell build script syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/build.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "PowerShell build script has syntax errors"
+          }
       - name: Test
         run: go test ./... -count=1 -timeout 30s
       - name: Compile ablation benchmarks
@@ -98,7 +115,7 @@ jobs:
     name: Release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [test, analyze]
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: write

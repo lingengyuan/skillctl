@@ -28,12 +28,24 @@ foreach ($target in $targets) {
     $env:GOARCH = $target.Arch
     go build -trimpath -ldflags "-s -w -X main.version=$Version" -o $binary $projectRoot
     if ($LASTEXITCODE -ne 0) { throw "Build failed for $($target.OS)/$($target.Arch)" }
+    # tar records the source mode, so set it explicitly rather than relying on
+    # the build output's permissions. Parenthesized: PowerShell binds -and
+    # tighter than -or, so the obvious form would chmod Windows binaries too.
+    if ($target.OS -ne "windows" -and ($IsLinux -or $IsMacOS)) {
+        & chmod 0755 $binary
+    }
     Copy-Item (Join-Path $projectRoot "README.md"), (Join-Path $projectRoot "LICENSE") -Destination $stage
     if ($target.OS -eq "windows") {
         $archive = Join-Path $dist "$name.zip"
-        Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $archive -Force
+        # Compress-Archive is Windows-only; the .NET API works on every runner,
+        # so the release job can run where Unix modes are meaningful.
+        if (Test-Path $archive) { Remove-Item -Force $archive }
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $archive)
     } else {
         $archive = Join-Path $dist "$name.tar.gz"
+        # Windows has no Unix mode bits, so a tarball built there loses the
+        # executable bit. This runs on Linux/macOS, where tar records it.
         tar -czf $archive -C $stage .
         if ($LASTEXITCODE -ne 0) { throw "Archive failed for $name" }
     }
