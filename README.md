@@ -19,7 +19,7 @@ Invoke-WebRequest https://raw.githubusercontent.com/lingengyuan/skillctl/main/sc
 .\install.ps1
 ```
 
-脚本安装最新正式版，重新运行即可升级；指定版本使用 `--version v0.4.2`（PowerShell：`-Version v0.4.2`）。安装包见 [Releases](https://github.com/lingengyuan/skillctl/releases)。Git 来源需要 Git。
+脚本安装最新正式版，重新运行即可升级；指定版本使用 `--version v0.4.3`（PowerShell：`-Version v0.4.3`）。安装包见 [Releases](https://github.com/lingengyuan/skillctl/releases)。Git 来源需要 Git。
 
 ## 使用
 
