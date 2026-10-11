@@ -136,15 +136,6 @@ func validObjectCache(cache string) bool {
 	return err == nil && value == "true"
 }
 
-// ValidWorktree checks whether a cache contains a usable Git worktree.
-func ValidWorktree(cache string) bool {
-	if _, err := os.Stat(filepath.Join(cache, ".git")); err != nil {
-		return false
-	}
-	_, err := Output(cache, "rev-parse", "--is-inside-work-tree")
-	return err == nil
-}
-
 func quarantineSourceCache(cache string) error {
 	if _, err := os.Lstat(cache); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -281,51 +272,6 @@ func resolveObjectRevision(ctx context.Context, cache, ref string) (string, erro
 	return "", fmt.Errorf("source ref %q was not found as a branch, tag, or commit", ref)
 }
 
-// SyncWorktree refreshes a source under a kernel lock and checks out the requested revision.
-func SyncWorktree(ctx context.Context, source, ref string) (string, error) {
-	cache, err := CachePath("worktree", source, ref)
-	if err != nil {
-		return "", err
-	}
-	lock, err := acquireSourceCacheLock(ctx, cache)
-	if err != nil {
-		return "", err
-	}
-	defer lock.release()
-
-	fresh := false
-	if _, statErr := os.Lstat(cache); statErr == nil {
-		if !ValidWorktree(cache) {
-			if err := quarantineSourceCache(cache); err != nil {
-				return "", err
-			}
-		}
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return "", fmt.Errorf("inspect source cache: %w", statErr)
-	}
-	if _, statErr := os.Lstat(cache); errors.Is(statErr, os.ErrNotExist) {
-		if err := cloneSourceAtomically(ctx, source, cache, false); err != nil {
-			return "", err
-		}
-		fresh = true
-	} else if statErr != nil {
-		return "", fmt.Errorf("inspect source cache: %w", statErr)
-	}
-	if !fresh {
-		if _, err := NetworkOutput(ctx, cache, "fetch", "--prune", "--recurse-submodules=no", "origin"); err != nil {
-			return "", &OperationError{Stage: "fetch", Err: err}
-		}
-	}
-	revision, err := resolveSourceRevision(ctx, cache, ref)
-	if err != nil {
-		return "", err
-	}
-	if _, err := OutputContext(ctx, cache, "checkout", "--force", "--detach", revision); err != nil {
-		return "", &OperationError{Stage: "checkout", Err: err}
-	}
-	return cache, nil
-}
-
 // NormalizeSource canonicalizes existing local sources while preserving remote source URLs.
 func NormalizeSource(source string) string {
 	if _, err := os.Stat(source); err == nil {
@@ -334,28 +280,6 @@ func NormalizeSource(source string) string {
 		}
 	}
 	return source
-}
-
-func resolveSourceRevision(ctx context.Context, cache, ref string) (string, error) {
-	if ref == "" {
-		return "refs/remotes/origin/HEAD", nil
-	}
-	ref = strings.TrimPrefix(ref, "refs/heads/")
-	candidates := []string{
-		"refs/remotes/origin/" + ref,
-		"refs/tags/" + ref,
-	}
-	if strings.HasPrefix(ref, "refs/") {
-		candidates = []string{ref}
-	} else if isCommitRef(ref) {
-		candidates = append(candidates, ref)
-	}
-	for _, candidate := range candidates {
-		if _, err := OutputContext(ctx, cache, "rev-parse", "--verify", candidate+"^{commit}"); err == nil {
-			return candidate, nil
-		}
-	}
-	return "", fmt.Errorf("source ref %q was not found as a remote branch, tag, or commit", ref)
 }
 
 func isCommitRef(ref string) bool {

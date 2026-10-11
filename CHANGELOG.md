@@ -49,8 +49,10 @@ CI 修复，无功能变更。v0.4.1 的代码与本文描述一致，但该 tag
 
 - 来源检查并发从 4 提高到 8，减少多来源场景的串行轮次。
 - `config gc` 回收被中断的 clone 遗留的临时目录。此前这类目录不会被清理，只能手工删除；gc 只回收闲置超过一天的目录，正在进行的 clone 不受影响。
+- 重新运行性能消融，结果与环境记录见 [性能实验](docs/performance.md) 与 `benchmarks/results/2026-10-11/`。消融脚本此前依赖的源码片段已随实现演进失效，按文档给出的命令执行会直接报错；现已同步，并让并发上限由常量驱动，避免再次漂移。
+- 移除随 `SyncWorktree` 一起失效的实现：该函数及其专用的 `ValidWorktree`、`resolveSourceRevision` 已无调用者，`SyncObject` 是现行路径。
 - 新增 `CONTRIBUTING.md`、`SECURITY.md` 与 issue 模板。
-- 补充路径身份（`Within`、`PathKey`、`BindingPath`、`PhysicalPath`）与 Git 缓存（`isCommitRef`、`ValidWorktree`、`StaleCloneDirectories`）的测试。
+- 补充路径身份（`Within`、`PathKey`、`BindingPath`、`PhysicalPath`）与 Git 缓存（`isCommitRef`、`StaleCloneDirectories`）的测试。
 
 ### 安装选择与确认
 

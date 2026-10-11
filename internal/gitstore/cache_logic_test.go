@@ -31,35 +31,6 @@ func TestIsCommitRef(t *testing.T) {
 	}
 }
 
-// A cache directory without a usable worktree must be rejected, or a corrupt
-// cache would be reused silently.
-func TestValidWorktreeRejectsUnusableCaches(t *testing.T) {
-	base := t.TempDir()
-
-	// No .git at all.
-	empty := filepath.Join(base, "empty")
-	if err := os.MkdirAll(empty, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if ValidWorktree(empty) {
-		t.Fatal("directory without .git was accepted")
-	}
-
-	// A .git directory that is not a valid repository.
-	fake := filepath.Join(base, "fake")
-	if err := os.MkdirAll(filepath.Join(fake, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if ValidWorktree(fake) {
-		t.Fatal("bogus .git was accepted as a worktree")
-	}
-
-	// A missing path.
-	if ValidWorktree(filepath.Join(base, "absent")) {
-		t.Fatal("missing path was accepted")
-	}
-}
-
 // Only interrupted clone stages are stale. A fresh stage may belong to a
 // running process and must be kept.
 func TestStaleCloneDirectoriesRespectsAge(t *testing.T) {

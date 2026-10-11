@@ -22,6 +22,11 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 FACTORS = {"buffer_reuse", "source_index", "dedup", "parallel", "kernel_lock"}
+
+# The concurrency limit the "parallel" factor patches down to 1. Kept as a
+# constant so the report text cannot drift from the patch it describes.
+PARALLEL_BASELINE = 8
+
 VARIANTS = {
     "full": set(),
     "no_buffer_reuse": {"buffer_reuse"},
@@ -88,17 +93,26 @@ def apply_variant(path, disabled, variant):
        !bytes.Contains(line, []byte(`\\u`)) { return nil }
 ''')
     if "buffer_reuse" in disabled:
+        # Revert to ReadBytes: no fragment reuse across a buffer-full boundary.
         replace_once(history, "\tvar fragments []byte\n", "")
-        start = history.read_text().index("\t\tline, readErr := reader.ReadSlice('\\n')")
-        end = history.read_text().index("\n\t\tif !bytes.Contains(line", start)
         text = history.read_text()
-        history.write_text(text[:start] + "\t\tline, readErr := reader.ReadBytes('\\n')" + text[end:])
+        start = text.index("\t\tline, readErr := reader.ReadSlice('\\n')")
+        end = text.index("\n\t\tlineNumber++", start)
+        replacement = (
+            "\t\tline, readErr := reader.ReadBytes('\\n')\n"
+            "\t\tif readErr != nil && len(line) == 0 {\n"
+            "\t\t\tbreak\n"
+            "\t\t}\n"
+        )
+        history.write_text(text[:start] + replacement + text[end:])
     if "source_index" in disabled:
-        replace_once(recovery, "if !cached {", "if !cached || true {")
+        # Disable the per-session index reuse so every lookup rescans the tree.
+        snapshot = path / "internal/app/source_snapshot.go"
+        replace_once(snapshot, "\tif index, found := s.indexes[key]; found {\n\t\treturn index\n\t}", "\tif _, found := s.indexes[key]; found && false {\n\t\treturn sourceSkillIndex{}\n\t}")
     if "dedup" in disabled:
         replace_once(session, "if index, found := byKey[key]; found {", "if index, found := byKey[key]; found && false {")
     if "parallel" in disabled:
-        replace_once(session, "const maxConcurrentSourceChecks = 4", "const maxConcurrentSourceChecks = 1")
+        replace_once(session, f"const maxConcurrentSourceChecks = {PARALLEL_BASELINE}", "const maxConcurrentSourceChecks = 1")
     if "kernel_lock" in disabled:
         cache = path / "internal/gitstore/cache.go"
         replace_once(cache, "type sourceCacheLock struct {", "type sourceCacheLock struct {\nlegacyPath string")
@@ -165,7 +179,7 @@ def write_report(output, record):
     for variant in VARIANTS:
         values = [summaries[variant].get("BenchmarkAblation" + suffix, {}).get("metrics", {}).get("ns/op", {}).get("median") for suffix in order]
         lines.append("| " + variant + " | " + " | ".join("—" if value is None else f"{value / 1e6:.3f}" for value in values) + " |")
-    lines += ["", "消融含义：`no_buffer_reuse` 恢复逐行分配；`no_source_index` 每个 Skill 重新扫描来源；`no_dedup` 不合并预取请求；`serial` 将来源并发从 4 降为 1；`legacy_lock` 恢复 v0.0.3 的文件存在锁。另有去重与并发同时关闭，以及全部关闭，便于检查相互作用。`with_history_filter` 两项只在临时副本加入已放弃的工具名预筛，用于记录负面结果；该预筛不在最终程序中。", "",
+    lines += ["", f"消融含义：`no_buffer_reuse` 恢复逐行分配；`no_source_index` 每个 Skill 重新扫描来源；`no_dedup` 不合并预取请求；`serial` 将来源并发从 {PARALLEL_BASELINE} 降为 1；`legacy_lock` 恢复 v0.0.3 的文件存在锁。另有去重与并发同时关闭，以及全部关闭，便于检查相互作用。`with_history_filter` 两项只在临时副本加入已放弃的工具名预筛，用于记录负面结果；该预筛不在最终程序中。", "",
               "历史场景约 17 MB、4096 条无关记录和 16 条安装记录；失败场景 32 个 Skill 共享 8 个来源，每次模拟 20 ms 失败；成功场景 20 个已安装 Skill 共享含 200 个 Skill 的来源。每轮均检查候选身份、验证数量和失败后不登记来源。", "",
               "锁场景使用真实退出的子进程 PID 和 50 ms 等待预算。旧锁预期超时，新锁预期成功；这项同时比较正确性，不能将超时截断值当成完成耗时。", "",
               "完整逐轮指标、内存分配、调用次数及原始 benchmark 行见 `results.json` 和 `samples.csv`。`all_off` 是受控算法基线，并非整个 v0.0.3 二进制。"]
