@@ -19,7 +19,7 @@ metadata:
   github-ref: main
   github-tree-sha: "0123456789012345678901234567890123456789"
   github-path: skills/yaml-skill/SKILL.md
-  github-pinned: true
+  github-pinned: v1.2.0
   name: must-not-override
 ---
 body

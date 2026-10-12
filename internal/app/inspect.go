@@ -43,7 +43,7 @@ func inspectDetailed(ctx context.Context, networkTimeout time.Duration, action s
 		if claims.hasTracked {
 			sourceRequests = append(sourceRequests, sourceRequest{Source: claims.tracked.Source, Ref: claims.tracked.Ref, Skills: []string{item.Name}})
 		}
-		if claims.gh.Found && claims.gh.Err == nil && claims.gh.Claim.Repository != "" && !claims.gh.Claim.Pinned {
+		if claims.gh.Found && claims.gh.Err == nil && claims.gh.Claim.Repository != "" && claims.gh.Claim.Pinned == "" {
 			sourceRequests = append(sourceRequests, sourceRequest{Source: ghRepositoryURL(claims.gh.Claim.Repository), Ref: claims.gh.Claim.Ref, Skills: []string{item.Name}})
 		}
 	}
@@ -128,7 +128,7 @@ func inspectDetailed(ctx context.Context, networkTimeout time.Duration, action s
 			} else if ghClaim.Claim.LocalPath != "" {
 				r.Status = "managed from local path"
 				r.State, r.ReasonCode = "managed", "host_managed"
-			} else if ghClaim.Claim.Pinned {
+			} else if ghClaim.Claim.Pinned != "" {
 				r.Status = "pinned"
 				r.State, r.ReasonCode = "pinned", "pinned_revision"
 				r.Executor = "gh-skill-cli"

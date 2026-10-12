@@ -24,7 +24,7 @@ type ghSkillClaim struct {
 	TreeSHA    string
 	SkillPath  string
 	LocalPath  string
-	Pinned     bool
+	Pinned     string
 }
 
 type ghSkillClaimResult struct {
@@ -66,7 +66,7 @@ func readGHSkillClaim(item skill) ghSkillClaimResult {
 		TreeSHA:    skilldoc.MetadataString(document.Metadata, "github-tree-sha"),
 		SkillPath:  skilldoc.MetadataString(document.Metadata, "github-path"),
 		LocalPath:  skilldoc.MetadataString(document.Metadata, "local-path"),
-		Pinned:     skilldoc.MetadataBool(document.Metadata, "github-pinned"),
+		Pinned:     skilldoc.MetadataPinnedRef(document.Metadata, "github-pinned"),
 	}
 	if claim.LocalPath != "" && claim.Repository == "" && claim.Ref == "" && claim.TreeSHA == "" && claim.SkillPath == "" {
 		return ghSkillClaimResult{Claim: claim, Found: true}

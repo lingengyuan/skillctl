@@ -120,21 +120,16 @@ func MetadataString(metadata map[string]any, key string) string {
 	}
 }
 
-// MetadataBool reads a boolean or a parseable boolean string from provider metadata.
-func MetadataBool(metadata map[string]any, key string) bool {
-	value, ok := metadata[key]
-	if !ok || value == nil {
-		return false
+// MetadataPinnedRef reads the github-pinned marker, whose value is the ref the
+// skill is pinned to rather than a boolean. The gh CLI writes a ref string
+// ("github-pinned: v1.2.0"), so treating this as a bool lost every non-"true"
+// value and let pinned skills be reported as updatable.
+func MetadataPinnedRef(metadata map[string]any, key string) string {
+	value := MetadataString(metadata, key)
+	if value == "" || strings.EqualFold(value, "false") {
+		return ""
 	}
-	switch typed := value.(type) {
-	case bool:
-		return typed
-	case string:
-		parsed, err := strconv.ParseBool(strings.TrimSpace(typed))
-		return err == nil && parsed
-	default:
-		return false
-	}
+	return value
 }
 
 // ValidName checks the lowercase, hyphen-separated Skill name syntax.

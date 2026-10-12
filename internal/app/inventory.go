@@ -302,7 +302,7 @@ func describeSkillObserved(item skill, p *provenanceIndex, plugins []hostPlugin,
 		}
 		asset.Source, asset.ID, asset.Revision = new(source), sourceIdentity(source), claim.TreeSHA
 		asset.State, asset.ReasonCode = "unknown", "not_checked"
-		if claim.Pinned {
+		if claim.Pinned != "" {
 			asset.State, asset.ReasonCode = "pinned", "pinned_revision"
 		}
 	default:
